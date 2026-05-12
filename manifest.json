@@ -1,0 +1,26 @@
+{
+  "name": "Analizador Financiero SABI",
+  "short_name": "SABI Analyzer",
+  "description": "Análisis fundamental y valoración de empresas a partir de SABI, Yahoo Finance y FMP",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#fafaf6",
+  "theme_color": "#1a3a5e",
+  "lang": "es-ES",
+  "icons": [
+    {
+      "src": "icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
