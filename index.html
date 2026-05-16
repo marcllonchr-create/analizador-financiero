@@ -5775,9 +5775,23 @@ async function avFetch(fn, ticker) {
   }
   if (!res.ok) throw new Error(`AV_HTTP_${res.status}`);
   const data = await res.json();
-  // Alpha Vantage avisa de rate limit en lugar de devolver error HTTP
-  if (data['Note']) throw new Error('AV_RATE_LIMIT');
-  if (data['Information'] && /api key/i.test(data['Information'])) throw new Error('AV_RATE_LIMIT_DAILY');
+  // Alpha Vantage NUNCA devuelve error HTTP por rate-limit ni tier inadecuado.
+  // En su lugar mete un mensaje en `Note` o `Information` con JSON HTTP-200.
+  // Patterns vistos en producción: "Our standard API call frequency is...",
+  // "The **demo** API key is for...", "Our standard API rate limit is 25 requests/day",
+  // "Please subscribe to any of the premium plans...". Tratamos cualquier
+  // Information/Note con contenido como condición no procesable.
+  const info = (data['Information'] || data['Note'] || '').toString();
+  if (info) {
+    console.warn('AV Information/Note:', info);
+    // Distinguir rate-limit diario vs por minuto vs tier insuficiente
+    if (/premium|paid plan|subscri/i.test(info)) throw new Error('AV_TIER');
+    if (/(per\s*day|daily|25\s*requests)/i.test(info)) throw new Error('AV_RATE_LIMIT_DAILY');
+    if (/(per\s*minute|minute|5\s*calls)/i.test(info)) throw new Error('AV_RATE_LIMIT');
+    if (/api key|demo/i.test(info)) throw new Error('AV_KEY_INVALID');
+    // Caso desconocido: propaga el texto al toast para diagnóstico
+    throw new Error('AV_INFO:' + info.slice(0, 140));
+  }
   if (data['Error Message']) throw new Error('TICKER_NOT_FOUND');
   return data;
 }
@@ -5817,8 +5831,14 @@ async function loadFromAV() {
     if (loadingMsg) loadingMsg.textContent = `${ticker} · cash flow (4/4)...`;
     const cashflow = await avFetch('CASH_FLOW', ticker);
 
-    if (!balance.annualReports || !balance.annualReports.length) throw new Error('NO_FINANCIAL_DATA');
-    if (!income.annualReports || !income.annualReports.length) throw new Error('NO_FINANCIAL_DATA');
+    if (!balance.annualReports || !balance.annualReports.length) {
+      console.warn('AV BALANCE_SHEET sin annualReports. Respuesta cruda:', balance);
+      throw new Error('NO_FINANCIAL_DATA');
+    }
+    if (!income.annualReports || !income.annualReports.length) {
+      console.warn('AV INCOME_STATEMENT sin annualReports. Respuesta cruda:', income);
+      throw new Error('NO_FINANCIAL_DATA');
+    }
 
     if (loadingMsg) loadingMsg.textContent = `Procesando ${overview.Name || ticker}...`;
     buildDatasetFromAV(overview, balance, income, cashflow, ticker);
@@ -5837,11 +5857,14 @@ async function loadFromAV() {
     }
     let msg = 'Error: ' + e.message;
     if (e.message === 'NO_AV_KEY') msg = '⚠ Configura tu API key de Alpha Vantage en Ajustes (gratis, 20 segundos)';
+    else if (e.message === 'AV_KEY_INVALID') msg = '⚠ La API key parece inválida o estás usando la "demo". Pega una key real desde alphavantage.co/support/#api-key.';
     else if (e.message === 'TICKER_NOT_FOUND') msg = `Ticker "${ticker}" no encontrado en Alpha Vantage. Para mercados europeos usa sufijos como .LON, .FRK, .PAR (no los de Yahoo).`;
-    else if (e.message === 'NO_FINANCIAL_DATA') msg = `Alpha Vantage no devuelve estados financieros para "${ticker}". Algunos tickers (ADRs raros, ETFs, small caps) tienen cobertura limitada.`;
-    else if (e.message === 'AV_RATE_LIMIT') msg = 'Rate limit por minuto agotado (5 req/min). Espera 1 minuto y reintenta.';
-    else if (e.message === 'AV_RATE_LIMIT_DAILY') msg = 'Cuota diaria agotada (25 req/día en plan free). Reintenta mañana o pasa a SABI.';
+    else if (e.message === 'NO_FINANCIAL_DATA') msg = `Alpha Vantage no devuelve estados financieros para "${ticker}". Si este es un ticker conocido (AAPL/MSFT/etc.), normalmente significa que se han agotado las requests del día — revisa F12 → Console para más detalle.`;
+    else if (e.message === 'AV_TIER') msg = 'Alpha Vantage indica que el endpoint requiere plan premium. Es inusual para los 4 endpoints estándar (OVERVIEW/BS/IS/CF); revisa el detalle en F12 → Console.';
+    else if (e.message === 'AV_RATE_LIMIT') msg = 'Rate limit por minuto alcanzado (5 req/min). Espera 60 segundos y reintenta.';
+    else if (e.message === 'AV_RATE_LIMIT_DAILY') msg = 'Cuota diaria de Alpha Vantage agotada (25 req/día en plan free). Reintenta mañana o pasa a SABI en la pestaña 02.';
     else if (e.message === 'AV_TIMEOUT') msg = 'Tiempo de espera agotado (>10s). Verifica conexión y reintenta.';
+    else if (e.message.startsWith('AV_INFO:')) msg = `Alpha Vantage devolvió un aviso: ${e.message.slice(8)}`;
     else if (e.message.startsWith('AV_HTTP_')) msg = `Alpha Vantage respondió ${e.message.replace('AV_HTTP_','HTTP ')}. Reintenta.`;
     showToast('✗ ' + msg);
     if (loadingDiv) loadingDiv.style.display = 'none';
