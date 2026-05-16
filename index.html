@@ -1954,14 +1954,31 @@
     </div>
 
     <div class="settings-section">
+      <h4>Alpha Vantage · fuente principal por ticker <span id="av-status" class="settings-status off" style="margin-left:8px">Sin configurar</span></h4>
+      <div class="desc">
+        Fuente de datos por ticker (perfil, balance, resultados, cash flow). Plan free: <strong>25 análisis al día</strong>.
+        Cada empresa consume 4 requests del cupo (OVERVIEW + BALANCE_SHEET + INCOME_STATEMENT + CASH_FLOW).
+      </div>
+      <input type="text" class="settings-input" id="inp-av-key" placeholder="Pega tu Alpha Vantage API key aquí (ej: ABC123XYZ...)" oninput="onAVKeyChange()">
+      <div class="settings-steps">
+        <strong>Cómo conseguir tu API key gratis (20 segundos):</strong>
+        <ol>
+          <li>Ve a <a href="https://www.alphavantage.co/support/#api-key" target="_blank">alphavantage.co/support/#api-key</a></li>
+          <li>Rellena el formulario (nombre + email + uso académico/personal — sin tarjeta de crédito)</li>
+          <li>La página devuelve la API key al instante (no hace falta confirmar email)</li>
+          <li>Pégala arriba — se guarda en este navegador (no la enviamos a ningún sitio)</li>
+        </ol>
+      </div>
+    </div>
+
+    <div class="settings-section">
       <h4>Financial Modeling Prep · fallback opcional <span id="fmp-status" class="settings-status off" style="margin-left:8px">Sin configurar</span></h4>
       <div class="desc">
-        La fuente principal por ticker es <strong>Yahoo Finance</strong> (gratuita, sin API key). FMP queda como
-        fallback opcional para quien tenga plan Starter+ ($14/mes): si Yahoo no devuelve datos para un ticker,
-        se reintenta automáticamente con FMP si la API key está configurada aquí.
+        Fuente secundaria opcional. Si Alpha Vantage falla por rate-limit o ticker no cubierto, se reintenta
+        automáticamente con FMP si tienes la key configurada.
         <br><br>
         <span style="color:var(--warn);font-weight:500">⚠ El plan Basic gratuito de FMP dejó de cubrir los estados financieros históricos en 2024-2025.</span>
-        Con plan Basic verás errores 402 (Payment Required). Solo configura FMP si tienes Starter+.
+        Con plan Basic verás errores 402 (Payment Required). Solo configura FMP si tienes Starter+ ($14/mes).
       </div>
       <input type="text" class="settings-input" id="inp-fmp-key" placeholder="Opcional · pega tu FMP API key (Starter+) si quieres usarla como fallback" oninput="onFMPKeyChange()">
       <div class="settings-steps">
@@ -2028,7 +2045,7 @@
   <div class="source-tabs">
     <button class="source-tab active" data-source="fmp" onclick="switchSource('fmp')">
       <div class="source-title">Por ticker · Cualquier empresa cotizada</div>
-      <div class="source-sub">Búsqueda rápida por ticker bursátil (AAPL, MSFT, NESN.SW, MC.PA, ITX.MC…). Datos vía Yahoo Finance — gratuito, sin API key. ~70.000 empresas del mundo.</div>
+      <div class="source-sub">Búsqueda rápida por ticker bursátil (AAPL, MSFT, IBM, SAP, BNP.PAR…). Datos vía Alpha Vantage — API key gratuita en 20 segundos (sin tarjeta). 25 análisis/día en plan free.</div>
     </button>
     <button class="source-tab" data-source="sabi" onclick="switchSource('sabi')">
       <div class="source-title">Por archivo SABI · Análisis en profundidad</div>
@@ -2041,29 +2058,28 @@
     <div style="background:var(--paper);border:1px solid var(--line);padding:24px 28px">
       <div style="font-size:18px;font-weight:700;margin-bottom:6px;color:var(--accent)">Analizar por ticker</div>
       <div style="font-size:13px;color:var(--ink-soft);margin-bottom:14px;line-height:1.5">
-        Escribe el ticker bursátil de la empresa. Soporta los principales mercados del mundo. Datos vía <strong>Yahoo Finance</strong> (gratuito).
+        Escribe el ticker bursátil. Datos vía <strong>Alpha Vantage</strong> (API key gratuita, 25 análisis/día). Cada análisis consume 4 requests del cupo.
         <span id="fmp-warning" style="color:var(--warn);font-weight:500"></span>
       </div>
       <div class="ticker-input-row">
         <input type="text" id="inp-ticker" placeholder="ej: AAPL · MSFT · NVDA · NESN.SW · MC.PA · ITX.MC" autocomplete="off">
-        <button onclick="loadFromYahoo()" id="btn-load-fmp">Analizar</button>
+        <button onclick="loadFromAV()" id="btn-load-fmp">Analizar</button>
       </div>
       <div class="ticker-suggestions">
         <span class="lab">Pruebas rápidas:</span>
-        <span class="ticker-suggestion" onclick="document.getElementById('inp-ticker').value='AAPL';loadFromYahoo()">AAPL (Apple)</span>
-        <span class="ticker-suggestion" onclick="document.getElementById('inp-ticker').value='MSFT';loadFromYahoo()">MSFT (Microsoft)</span>
-        <span class="ticker-suggestion" onclick="document.getElementById('inp-ticker').value='NVDA';loadFromYahoo()">NVDA (NVIDIA)</span>
-        <span class="ticker-suggestion" onclick="document.getElementById('inp-ticker').value='ITX.MC';loadFromYahoo()">ITX.MC (Inditex)</span>
-        <span class="ticker-suggestion" onclick="document.getElementById('inp-ticker').value='NESN.SW';loadFromYahoo()">NESN.SW (Nestlé)</span>
-        <span class="ticker-suggestion" onclick="document.getElementById('inp-ticker').value='MC.PA';loadFromYahoo()">MC.PA (LVMH)</span>
+        <span class="ticker-suggestion" onclick="document.getElementById('inp-ticker').value='AAPL';loadFromAV()">AAPL (Apple)</span>
+        <span class="ticker-suggestion" onclick="document.getElementById('inp-ticker').value='MSFT';loadFromAV()">MSFT (Microsoft)</span>
+        <span class="ticker-suggestion" onclick="document.getElementById('inp-ticker').value='NVDA';loadFromAV()">NVDA (NVIDIA)</span>
+        <span class="ticker-suggestion" onclick="document.getElementById('inp-ticker').value='ITX.MC';loadFromAV()">ITX.MC (Inditex)</span>
+        <span class="ticker-suggestion" onclick="document.getElementById('inp-ticker').value='NESN.SW';loadFromAV()">NESN.SW (Nestlé)</span>
+        <span class="ticker-suggestion" onclick="document.getElementById('inp-ticker').value='MC.PA';loadFromAV()">MC.PA (LVMH)</span>
       </div>
       <div id="fmp-loading" style="display:none" class="api-loading">
         <div class="spinner-big"></div>
         <div id="fmp-loading-msg">Descargando datos…</div>
       </div>
       <div style="margin-top:18px;font-size:11px;color:var(--ink-mute);line-height:1.5">
-        <strong>Sufijos comunes:</strong>
-        <code>.MC</code> Madrid · <code>.PA</code> París · <code>.DE</code> Frankfurt · <code>.AS</code> Amsterdam · <code>.MI</code> Milán · <code>.SW</code> Suiza · <code>.L</code> Londres · sin sufijo = NYSE/NASDAQ
+        <strong>Sufijos Alpha Vantage:</strong> sin sufijo para NYSE/NASDAQ (AAPL, MSFT, NVDA) · <code>.LON</code> Londres · <code>.PAR</code> París · <code>.FRK</code> Frankfurt · <code>.MAD</code> Madrid · <code>.MIL</code> Milán · <code>.SWX</code> Suiza. Si un mercado no aparece, prueba el ticker tal cual o consulta <span style="font-family:var(--mono)">alphavantage.co/documentation</span>.
       </div>
     </div>
   </div>
@@ -5433,6 +5449,7 @@ function togglePeer(key) {
 // =======================================================
 function openSettings() {
   // Pre-fill stored values
+  document.getElementById('inp-av-key').value = localStorage.getItem('av_api_key') || '';
   document.getElementById('inp-fmp-key').value = localStorage.getItem('fmp_api_key') || '';
   document.getElementById('inp-gh-token').value = localStorage.getItem('gh_token') || '';
   document.getElementById('inp-gh-repo').value = localStorage.getItem('gh_repo') || '';
@@ -5441,6 +5458,17 @@ function openSettings() {
 }
 function closeSettings() {
   document.getElementById('settings-modal').classList.remove('open');
+}
+function onAVKeyChange() {
+  const v = document.getElementById('inp-av-key').value.trim();
+  if (v) localStorage.setItem('av_api_key', v);
+  else localStorage.removeItem('av_api_key');
+  updateSettingsStatus();
+  // Refresh tab warning (the empty-state in the ticker panel may need updating)
+  const warning = document.getElementById('fmp-warning');
+  if (warning) {
+    warning.innerHTML = v ? '' : ' · ⚠ <a href="#" onclick="openSettings();return false" style="color:var(--warn);text-decoration:underline">Configura tu API key gratuita</a>';
+  }
 }
 function onFMPKeyChange() {
   const v = document.getElementById('inp-fmp-key').value.trim();
@@ -5456,8 +5484,14 @@ function onGitHubChange() {
   updateSettingsStatus();
 }
 function updateSettingsStatus() {
+  const avStatus = document.getElementById('av-status');
   const fmpStatus = document.getElementById('fmp-status');
   const ghStatus = document.getElementById('github-status');
+  if (avStatus) {
+    const key = localStorage.getItem('av_api_key');
+    avStatus.textContent = key ? '✓ Configurado' : 'Sin configurar';
+    avStatus.className = 'settings-status ' + (key ? 'ok' : 'off');
+  }
   if (fmpStatus) {
     const key = localStorage.getItem('fmp_api_key');
     fmpStatus.textContent = key ? '✓ Configurado' : 'Sin configurar';
@@ -5554,9 +5588,17 @@ function switchSource(source) {
   });
   document.getElementById('source-sabi').style.display = source === 'sabi' ? 'block' : 'none';
   document.getElementById('source-fmp').style.display = source === 'fmp' ? 'block' : 'none';
-  // Limpiar warning · Yahoo Finance no requiere API key
-  const warning = document.getElementById('fmp-warning');
-  if (warning) warning.innerHTML = '';
+  // Update warning if Alpha Vantage key missing
+  if (source === 'fmp') {
+    const warning = document.getElementById('fmp-warning');
+    if (warning) {
+      if (!localStorage.getItem('av_api_key')) {
+        warning.innerHTML = ' · ⚠ <a href="#" onclick="openSettings();return false" style="color:var(--warn);text-decoration:underline">Configura tu API key gratuita en Ajustes</a>';
+      } else {
+        warning.innerHTML = '';
+      }
+    }
+  }
 }
 
 async function loadFromFMP() {
@@ -5710,78 +5752,83 @@ function buildDatasetFromFMP(profile, balance, income, cashFlow) {
 }
 
 // =======================================================
-// MODULE PWA-3b · YAHOO FINANCE quoteSummary
-// Fuente PRINCIPAL gratuita para análisis por ticker (FMP plan Basic dejó de
-// cubrir los estados financieros históricos en 2024-2025, exigen Starter $14/mes).
-// Yahoo Finance vía corsproxy.io: 4 años de balance/income/cashflow, sin API key.
-// Limitación conocida: ocasionalmente cambia formato, depende del proxy CORS.
+// MODULE PWA-3b · ALPHA VANTAGE (fuente principal por ticker)
+// Yahoo Finance dejó de ser viable: requiere proxy CORS y los proxies
+// gratuitos (corsproxy.io) bloquean Yahoo desde finales 2024.
+// Alpha Vantage soporta CORS nativo, free 25 req/día con API key gratis
+// (registro 20s sin tarjeta). 5 años de annualReports en balance/income/cashflow.
+// Endpoints: OVERVIEW, BALANCE_SHEET, INCOME_STATEMENT, CASH_FLOW, GLOBAL_QUOTE.
 // =======================================================
-async function yfFetch(ticker, modules) {
-  const moduleStr = modules.join(',');
-  const url = `https://query2.finance.yahoo.com/v10/finance/quoteSummary/${encodeURIComponent(ticker)}?modules=${moduleStr}`;
-  const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(url)}`;
+async function avFetch(fn, ticker) {
+  const apiKey = localStorage.getItem('av_api_key');
+  if (!apiKey) throw new Error('NO_AV_KEY');
+  const url = new URL('https://www.alphavantage.co/query');
+  url.searchParams.set('function', fn);
+  url.searchParams.set('symbol', ticker);
+  url.searchParams.set('apikey', apiKey);
   let res;
   try {
-    res = await fetchWithTimeout(proxyUrl, {}, 10000);
+    res = await fetchWithTimeout(url.toString(), {}, 10000);
   } catch (e) {
-    if (e.name === 'AbortError') throw new Error('YF_TIMEOUT');
+    if (e.name === 'AbortError') throw new Error('AV_TIMEOUT');
     throw e;
   }
-  if (!res.ok) throw new Error(`YF_HTTP_${res.status}`);
-  const json = await res.json();
-  if (json && json.quoteSummary && json.quoteSummary.error) {
-    const err = json.quoteSummary.error;
-    if (err.code === 'Not Found' || /not found/i.test(err.description || '')) throw new Error('TICKER_NOT_FOUND');
-    throw new Error(`YF_API: ${err.description || err.code || 'unknown'}`);
-  }
-  const result = json && json.quoteSummary && json.quoteSummary.result && json.quoteSummary.result[0];
-  if (!result) throw new Error('TICKER_NOT_FOUND');
-  return result;
+  if (!res.ok) throw new Error(`AV_HTTP_${res.status}`);
+  const data = await res.json();
+  // Alpha Vantage avisa de rate limit en lugar de devolver error HTTP
+  if (data['Note']) throw new Error('AV_RATE_LIMIT');
+  if (data['Information'] && /api key/i.test(data['Information'])) throw new Error('AV_RATE_LIMIT_DAILY');
+  if (data['Error Message']) throw new Error('TICKER_NOT_FOUND');
+  return data;
 }
 
-// Yahoo devuelve casi todos los números como { raw: <number>, fmt: <string> }.
-// Esta helper extrae el .raw probando varias claves alternativas.
-function yfNum(obj, ...keys) {
-  if (!obj) return 0;
-  for (const k of keys) {
-    const v = obj[k];
-    if (v && typeof v === 'object' && 'raw' in v && typeof v.raw === 'number') return v.raw;
-    if (typeof v === 'number') return v;
-  }
-  return 0;
+// Alpha Vantage devuelve todos los números como STRINGS ("391035000000") o "None".
+// Helper que parsea a número o devuelve 0.
+function avNum(s) {
+  if (s === undefined || s === null || s === 'None' || s === '-') return 0;
+  const n = parseFloat(s);
+  return isNaN(n) ? 0 : n;
 }
 
-async function loadFromYahoo() {
+async function loadFromAV() {
   const ticker = document.getElementById('inp-ticker').value.trim().toUpperCase();
   if (!ticker) { showToast('Introduce un ticker'); return; }
+  if (!localStorage.getItem('av_api_key')) {
+    showToast('⚠ Configura tu API key de Alpha Vantage en Ajustes');
+    openSettings();
+    return;
+  }
   const btn = document.getElementById('btn-load-fmp');
   const loadingDiv = document.getElementById('fmp-loading');
   const loadingMsg = document.getElementById('fmp-loading-msg');
   if (btn) btn.disabled = true;
   if (loadingDiv) loadingDiv.style.display = 'block';
-  if (loadingMsg) loadingMsg.textContent = `Descargando ${ticker}...`;
+  if (loadingMsg) loadingMsg.textContent = `Descargando ${ticker} (4 endpoints)...`;
   try {
-    const data = await yfFetch(ticker, [
-      'assetProfile', 'price', 'summaryDetail',
-      'defaultKeyStatistics', 'financialData',
-      'balanceSheetHistory', 'incomeStatementHistory', 'cashflowStatementHistory'
-    ]);
-    const hasBS = data.balanceSheetHistory && data.balanceSheetHistory.balanceSheetStatements && data.balanceSheetHistory.balanceSheetStatements.length;
-    const hasIS = data.incomeStatementHistory && data.incomeStatementHistory.incomeStatementHistory && data.incomeStatementHistory.incomeStatementHistory.length;
-    if (!hasBS || !hasIS) throw new Error('NO_FINANCIAL_DATA');
-    if (loadingMsg) {
-      const name = (data.price && (data.price.longName || data.price.shortName)) || ticker;
-      loadingMsg.textContent = `Procesando ${name}...`;
-    }
-    buildDatasetFromYahoo(data, ticker);
-    const name = (data.price && (data.price.longName || data.price.shortName)) || ticker;
-    showToast(`✓ Cargada: ${name}`);
+    // 4 endpoints en serie con pequeño retraso entre llamadas para no disparar
+    // el rate-limit de Alpha Vantage (5 req/min en el plan free).
+    if (loadingMsg) loadingMsg.textContent = `${ticker} · perfil (1/4)...`;
+    const overview = await avFetch('OVERVIEW', ticker);
+    if (!overview.Symbol) throw new Error('TICKER_NOT_FOUND');
+    if (loadingMsg) loadingMsg.textContent = `${ticker} · balance (2/4)...`;
+    const balance = await avFetch('BALANCE_SHEET', ticker);
+    if (loadingMsg) loadingMsg.textContent = `${ticker} · resultados (3/4)...`;
+    const income = await avFetch('INCOME_STATEMENT', ticker);
+    if (loadingMsg) loadingMsg.textContent = `${ticker} · cash flow (4/4)...`;
+    const cashflow = await avFetch('CASH_FLOW', ticker);
+
+    if (!balance.annualReports || !balance.annualReports.length) throw new Error('NO_FINANCIAL_DATA');
+    if (!income.annualReports || !income.annualReports.length) throw new Error('NO_FINANCIAL_DATA');
+
+    if (loadingMsg) loadingMsg.textContent = `Procesando ${overview.Name || ticker}...`;
+    buildDatasetFromAV(overview, balance, income, cashflow, ticker);
+    showToast(`✓ Cargada: ${overview.Name || ticker}`);
     if (loadingDiv) loadingDiv.style.display = 'none';
   } catch (e) {
-    console.error('Yahoo error:', e);
-    // Fallback opcional a FMP si el usuario tiene API key configurada
-    if (localStorage.getItem('fmp_api_key') && e.message !== 'NO_FINANCIAL_DATA') {
-      if (loadingMsg) loadingMsg.textContent = `Yahoo falló; reintentando con FMP...`;
+    console.error('Alpha Vantage error:', e);
+    // Fallback opcional a FMP si el usuario tiene API key (solo plan Starter+ funcional)
+    if (localStorage.getItem('fmp_api_key') && e.message !== 'NO_FINANCIAL_DATA' && e.message !== 'TICKER_NOT_FOUND') {
+      if (loadingMsg) loadingMsg.textContent = `Alpha Vantage falló; reintentando con FMP...`;
       try {
         return await loadFromFMP();
       } catch (e2) {
@@ -5789,11 +5836,13 @@ async function loadFromYahoo() {
       }
     }
     let msg = 'Error: ' + e.message;
-    if (e.message === 'TICKER_NOT_FOUND') msg = `Ticker "${ticker}" no encontrado en Yahoo Finance. Verifica el sufijo (.MC, .DE, .SW, .PA, .L).`;
-    else if (e.message === 'NO_FINANCIAL_DATA') msg = `Yahoo no devuelve estados financieros para "${ticker}". Algunos tickers (small caps, ADRs raros, ETFs) tienen cobertura limitada.`;
-    else if (e.message === 'YF_TIMEOUT') msg = 'Tiempo de espera agotado (>10s). El proxy CORS (corsproxy.io) puede estar caído; reintenta en 1 minuto.';
-    else if (e.message.startsWith('YF_HTTP_')) msg = `Yahoo Finance respondió ${e.message.replace('YF_HTTP_','HTTP ')}. Reintenta o prueba otro ticker.`;
-    else if (e.message.startsWith('YF_API:')) msg = `Yahoo Finance: ${e.message.slice(8)}`;
+    if (e.message === 'NO_AV_KEY') msg = '⚠ Configura tu API key de Alpha Vantage en Ajustes (gratis, 20 segundos)';
+    else if (e.message === 'TICKER_NOT_FOUND') msg = `Ticker "${ticker}" no encontrado en Alpha Vantage. Para mercados europeos usa sufijos como .LON, .FRK, .PAR (no los de Yahoo).`;
+    else if (e.message === 'NO_FINANCIAL_DATA') msg = `Alpha Vantage no devuelve estados financieros para "${ticker}". Algunos tickers (ADRs raros, ETFs, small caps) tienen cobertura limitada.`;
+    else if (e.message === 'AV_RATE_LIMIT') msg = 'Rate limit por minuto agotado (5 req/min). Espera 1 minuto y reintenta.';
+    else if (e.message === 'AV_RATE_LIMIT_DAILY') msg = 'Cuota diaria agotada (25 req/día en plan free). Reintenta mañana o pasa a SABI.';
+    else if (e.message === 'AV_TIMEOUT') msg = 'Tiempo de espera agotado (>10s). Verifica conexión y reintenta.';
+    else if (e.message.startsWith('AV_HTTP_')) msg = `Alpha Vantage respondió ${e.message.replace('AV_HTTP_','HTTP ')}. Reintenta.`;
     showToast('✗ ' + msg);
     if (loadingDiv) loadingDiv.style.display = 'none';
   } finally {
@@ -5801,23 +5850,18 @@ async function loadFromYahoo() {
   }
 }
 
-function buildDatasetFromYahoo(data, ticker) {
+function buildDatasetFromAV(overview, balance, income, cashflow, ticker) {
   // Reset state
   rawRows = [];
   yearsData = [];
   extractedData = {};
-  availableBlocks = [{ name: 'Yahoo', startRow: 0, endRow: 0 }];
+  availableBlocks = [{ name: 'AlphaVantage', startRow: 0, endRow: 0 }];
   currentBlockIdx = 0;
   blockLabelIndex = [];
   ratiosCache = null;
 
-  const price = data.price || {};
-  const profile = data.assetProfile || {};
-  const stats = data.defaultKeyStatistics || {};
-  const summary = data.summaryDetail || {};
-
-  // Yahoo expresa los valores en la moneda nativa del listing y en absoluto (1 = 1 unidad).
-  const currency = price.currency || summary.currency || 'USD';
+  // Alpha Vantage expresa todo en moneda nativa, absoluto (1 = 1 unidad)
+  const currency = overview.Currency || 'USD';
   unitInfo = {
     multiplier: 1,
     label: currency === 'EUR' ? '€' : currency === 'USD' ? '$' : currency,
@@ -5826,40 +5870,34 @@ function buildDatasetFromYahoo(data, ticker) {
   };
 
   companyInfo = {
-    name: price.longName || price.shortName || ticker,
-    activity: profile.longBusinessSummary
-      ? profile.longBusinessSummary.slice(0, 200) + (profile.longBusinessSummary.length > 200 ? '…' : '')
+    name: overview.Name || ticker,
+    activity: overview.Description
+      ? overview.Description.slice(0, 200) + (overview.Description.length > 200 ? '…' : '')
       : '',
-    constitution: '',
-    employees: profile.fullTimeEmployees ? profile.fullTimeEmployees.toString() : '',
-    fmp_sector: profile.sector || '',
-    industry: profile.industry || '',
+    constitution: overview.LatestQuarter || '',
+    employees: overview.FullTimeEmployees && overview.FullTimeEmployees !== 'None' ? overview.FullTimeEmployees : '',
+    fmp_sector: overview.Sector || '',
+    industry: overview.Industry || '',
     ticker: ticker,
-    exchange: price.exchangeName || price.exchange || '',
-    isYahoo: true
+    exchange: overview.Exchange || '',
+    isAV: true
   };
 
-  // Yahoo financial histories — index by year
-  const bsList = (data.balanceSheetHistory && data.balanceSheetHistory.balanceSheetStatements) || [];
-  const isList = (data.incomeStatementHistory && data.incomeStatementHistory.incomeStatementHistory) || [];
-  const cfList = (data.cashflowStatementHistory && data.cashflowStatementHistory.cashflowStatements) || [];
-
-  const yearOf = (stmt) => {
-    const d = stmt.endDate;
-    if (!d) return null;
-    if (typeof d === 'object' && d.fmt) return parseInt(d.fmt.slice(0, 4));
-    if (typeof d === 'object' && typeof d.raw === 'number') return new Date(d.raw * 1000).getUTCFullYear();
-    if (typeof d === 'number') return new Date(d * 1000).getUTCFullYear();
-    if (typeof d === 'string') return parseInt(d.slice(0, 4));
-    return null;
-  };
-
+  // Index annualReports by fiscal year
   const byYear = new Map();
-  for (const s of bsList) { const y = yearOf(s); if (y) { if (!byYear.has(y)) byYear.set(y, {}); byYear.get(y).bs = s; } }
-  for (const s of isList) { const y = yearOf(s); if (y) { if (!byYear.has(y)) byYear.set(y, {}); byYear.get(y).is = s; } }
-  for (const s of cfList) { const y = yearOf(s); if (y) { if (!byYear.has(y)) byYear.set(y, {}); byYear.get(y).cf = s; } }
+  const indexBy = (reports, key) => {
+    for (const r of (reports || [])) {
+      const y = r.fiscalDateEnding ? parseInt(r.fiscalDateEnding.slice(0, 4)) : null;
+      if (!y) continue;
+      if (!byYear.has(y)) byYear.set(y, {});
+      byYear.get(y)[key] = r;
+    }
+  };
+  indexBy(balance.annualReports, 'bs');
+  indexBy(income.annualReports, 'is');
+  indexBy(cashflow.annualReports, 'cf');
 
-  // Solo años con balance + income disponibles
+  // Solo años con balance + income disponibles, ordenados desc
   const years = [...byYear.entries()]
     .filter(([, d]) => d.bs && d.is)
     .map(([y]) => y)
@@ -5873,30 +5911,29 @@ function buildDatasetFromYahoo(data, ticker) {
     const is = e.is || {};
     const cf = e.cf || {};
 
-    const revenue = yfNum(is, 'totalRevenue');
-    const netIncome = yfNum(is, 'netIncome');
-    const incomeBeforeTax = yfNum(is, 'incomeBeforeTax');
-    const operatingIncome = yfNum(is, 'operatingIncome', 'ebit');
-    const grossProfit = yfNum(is, 'grossProfit');
-    const costOfRevenue = yfNum(is, 'costOfRevenue');
-    const interestExpense = Math.abs(yfNum(is, 'interestExpense'));
+    const revenue = avNum(is.totalRevenue);
+    const netIncome = avNum(is.netIncome);
+    const incomeBeforeTax = avNum(is.incomeBeforeTax);
+    const operatingIncome = avNum(is.operatingIncome) || avNum(is.ebit);
+    const grossProfit = avNum(is.grossProfit);
+    const costOfRevenue = avNum(is.costOfRevenue);
+    const interestExpense = Math.abs(avNum(is.interestExpense));
+    const depreciation = avNum(is.depreciationAndAmortization) || avNum(cf.depreciationDepletionAndAmortization);
+    const ebitdaReported = avNum(is.ebitda);
+    const ebitda = ebitdaReported || (operatingIncome && depreciation ? operatingIncome + depreciation : null);
 
-    const totalAssets = yfNum(bs, 'totalAssets');
-    const totalEquity = yfNum(bs, 'totalStockholderEquity');
-    const totalCurrentAssets = yfNum(bs, 'totalCurrentAssets');
-    const totalCurrentLiab = yfNum(bs, 'totalCurrentLiabilities');
-    const totalLiab = yfNum(bs, 'totalLiab');
-    const totalNonCurrentAssets = totalAssets - totalCurrentAssets;
-    const totalNonCurrentLiab = Math.max(0, totalLiab - totalCurrentLiab);
-    const inventory = yfNum(bs, 'inventory');
-    const cash = yfNum(bs, 'cash') + yfNum(bs, 'shortTermInvestments');
-    const receivables = yfNum(bs, 'netReceivables');
-    const accountsPayable = yfNum(bs, 'accountsPayable');
-    const shortTermDebt = yfNum(bs, 'shortLongTermDebt', 'shortTermDebt');
-    const longTermDebt = yfNum(bs, 'longTermDebt');
-
-    const depreciation = Math.abs(yfNum(cf, 'depreciation'));
-    const ebitda = (operatingIncome && depreciation) ? operatingIncome + depreciation : null;
+    const totalAssets = avNum(bs.totalAssets);
+    const totalEquity = avNum(bs.totalShareholderEquity);
+    const totalCurrentAssets = avNum(bs.totalCurrentAssets);
+    const totalCurrentLiab = avNum(bs.totalCurrentLiabilities);
+    const totalNonCurrentLiab = avNum(bs.totalNonCurrentLiabilities);
+    const totalNonCurrentAssets = avNum(bs.totalNonCurrentAssets) || (totalAssets - totalCurrentAssets);
+    const inventory = avNum(bs.inventory);
+    const cash = avNum(bs.cashAndCashEquivalentsAtCarryingValue) + avNum(bs.shortTermInvestments);
+    const receivables = avNum(bs.currentNetReceivables);
+    const accountsPayable = avNum(bs.currentAccountsPayable);
+    const shortTermDebt = avNum(bs.shortTermDebt);
+    const longTermDebt = avNum(bs.longTermDebt);
 
     extractedData[label] = {
       _year: year, _label: label,
@@ -5923,44 +5960,38 @@ function buildDatasetFromYahoo(data, ticker) {
     };
   }
 
-  // Render
   renderCompanyCard();
   renderAnalysis();
 
-  // Auto-fill price y shares desde Yahoo
-  const livePrice = yfNum(price, 'regularMarketPrice');
-  if (livePrice) document.getElementById('inp-price').value = livePrice;
-  const sharesOut = yfNum(stats, 'sharesOutstanding') || yfNum(price, 'sharesOutstanding');
+  // Auto-fill precio y acciones desde OVERVIEW
+  const sharesOut = avNum(overview.SharesOutstanding);
   if (sharesOut) document.getElementById('inp-shares').value = Math.round(sharesOut);
+  // OVERVIEW no incluye precio actual; lo pedimos aparte (1 request extra opcional)
+  // Por defensa: si el usuario quiere precio en vivo usa el botón ↻
 
   renderInvestment();
 }
 
+
+
 // =======================================================
-// MODULE PWA-4 · LIVE PRICE FETCH (Yahoo Finance via CORS proxy)
-// Fallback to FMP if Yahoo fails
+// MODULE PWA-4 · LIVE PRICE FETCH (Alpha Vantage GLOBAL_QUOTE)
+// Yahoo dejó de ser viable (proxies CORS bloquean Yahoo). Alpha Vantage tiene
+// CORS nativo. Fallback a FMP si hay key.
 // =======================================================
 async function fetchLivePrice(ticker) {
   if (!ticker) throw new Error('NO_TICKER');
-  // Try Yahoo first (free, no API key)
-  try {
-    const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(ticker)}?interval=1d&range=1d`;
-    const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(url)}`;
-    const res = await fetchWithTimeout(proxyUrl, {}, 10000);
-    if (res.ok) {
-      const data = await res.json();
-      const meta = data?.chart?.result?.[0]?.meta;
-      if (meta && meta.regularMarketPrice) {
-        return {
-          price: meta.regularMarketPrice,
-          currency: meta.currency,
-          source: 'Yahoo Finance',
-          time: new Date(meta.regularMarketTime * 1000)
-        };
+  // Try Alpha Vantage first (CORS native, requires AV API key)
+  if (localStorage.getItem('av_api_key')) {
+    try {
+      const data = await avFetch('GLOBAL_QUOTE', ticker);
+      const q = data && data['Global Quote'];
+      const priceStr = q && (q['05. price'] || q['05.price']);
+      if (priceStr) {
+        const price = parseFloat(priceStr);
+        if (!isNaN(price)) return { price, source: 'Alpha Vantage', time: new Date() };
       }
-    }
-  } catch (e) {
-    console.warn('Yahoo fetch failed:', e);
+    } catch (e) { console.warn('Alpha Vantage live price failed:', e); }
   }
   // Fallback to FMP if API key available
   if (localStorage.getItem('fmp_api_key')) {
@@ -5969,7 +6000,7 @@ async function fetchLivePrice(ticker) {
       if (Array.isArray(data) && data.length > 0 && data[0].price) {
         return { price: data[0].price, source: 'FMP', time: new Date() };
       }
-    } catch (e) { console.warn('FMP fetch failed:', e); }
+    } catch (e) { console.warn('FMP live price failed:', e); }
   }
   throw new Error('NO_PRICE_AVAILABLE');
 }

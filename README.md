@@ -53,15 +53,21 @@ Abrir `http://localhost:8000/` en el navegador. La PWA funciona en localhost aun
 
 ## Fuentes de datos
 
-### 1. Por ticker (Yahoo Finance) — opción principal
+### 1. Por ticker (Alpha Vantage) — opción principal
 
-Permite analizar cualquier empresa cotizada del mundo (~70.000 tickers): AAPL, MSFT, ITX.MC, TEF.MC, NESN.SW, MC.PA…
+Permite analizar empresas cotizadas del mundo: AAPL, MSFT, IBM, SAP, BNP.PAR, etc.
 
-**Sin API key, sin registro, sin cuotas declaradas.** Solo escribe el ticker y pulsa "Analizar". Los datos vienen de Yahoo Finance vía proxy CORS (`corsproxy.io`).
+**Setup Alpha Vantage (gratuito, 25 análisis/día, 20 segundos):**
+1. Ve a [alphavantage.co/support/#api-key](https://www.alphavantage.co/support/#api-key)
+2. Rellena el formulario (nombre + email + uso académico/personal — sin tarjeta)
+3. La página devuelve la API key al instante
+4. En la app: **Ajustes** → sección Alpha Vantage → pega la key
+5. Vuelve a la pestaña Análisis financiero → escribe ticker → Analizar
 
 Limitaciones conocidas:
-- Yahoo devuelve **4 años de históricos** en balance/income/cashflow (suficiente para análisis a 4 años, menos que SABI).
-- El proxy CORS puede caer ocasionalmente; reintentar en 1 minuto suele bastar.
+- Alpha Vantage devuelve **5 años de annual reports**.
+- Plan free: 25 requests/día y 5 requests/minuto. Cada análisis consume 4 requests, por tanto ~6 análisis distintos por día.
+- Sufijos por mercado: sin sufijo para NYSE/NASDAQ, `.LON` Londres, `.PAR` París, `.FRK` Frankfurt, `.MAD` Madrid, `.MIL` Milán, `.SWX` Suiza. Algunos mercados pequeños pueden no estar cubiertos.
 
 ### 2. Por archivo SABI — análisis en profundidad
 
