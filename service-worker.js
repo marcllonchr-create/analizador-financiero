@@ -1,7 +1,7 @@
 // Service Worker para Valora PWA
 // Permite funcionar offline cacheando el shell de la app
 
-const CACHE_VERSION = 'valora-v3';
+const CACHE_VERSION = 'valora-v4';
 const CACHE_URLS = [
   './',
   './index.html',

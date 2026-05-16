@@ -53,25 +53,29 @@ Abrir `http://localhost:8000/` en el navegador. La PWA funciona en localhost aun
 
 ## Fuentes de datos
 
-### 1. Por ticker (FMP) — opción principal
+### 1. Por ticker (Yahoo Finance) — opción principal
 
 Permite analizar cualquier empresa cotizada del mundo (~70.000 tickers): AAPL, MSFT, ITX.MC, TEF.MC, NESN.SW, MC.PA…
 
-**Setup FMP (gratuito, 250 requests/día):**
-1. Click **Ajustes** en la cabecera
-2. Sección "Financial Modeling Prep" → seguir las instrucciones
-3. Registro gratis en financialmodelingprep.com → confirma email → copia API key → pégala
-4. Listo. Ya puedes teclear cualquier ticker
+**Sin API key, sin registro, sin cuotas declaradas.** Solo escribe el ticker y pulsa "Analizar". Los datos vienen de Yahoo Finance vía proxy CORS (`corsproxy.io`).
+
+Limitaciones conocidas:
+- Yahoo devuelve **4 años de históricos** en balance/income/cashflow (suficiente para análisis a 4 años, menos que SABI).
+- El proxy CORS puede caer ocasionalmente; reintentar en 1 minuto suele bastar.
 
 ### 2. Por archivo SABI — análisis en profundidad
 
 Para empresas españolas no cotizadas o cuando quieras hasta 25 ejercicios de histórico, sube el `.xlsx` exportado del SABI (Bureau van Dijk / Moody's). Cubre ~todas las empresas españolas, cotizadas y no cotizadas.
 
-### 3. Precios en vivo
+### 3. Financial Modeling Prep — fallback opcional
+
+FMP queda como fuente secundaria. **El plan Basic gratuito de FMP ha dejado de cubrir los estados financieros históricos en 2024-2025** (devuelve HTTP 402 Payment Required incluso para AAPL). Solo configura una API key de FMP en Ajustes si tienes plan **Starter+** ($14/mes); en ese caso se usará como reintento automático cuando Yahoo falle.
+
+### 4. Precios en vivo
 
 Junto al input "Precio actual acción" hay un botón **↻** que descarga el precio real de Yahoo Finance al instante. Sin API key necesaria.
 
-Para que sepa qué ticker buscar: si cargaste por FMP, ya lo tiene; si subiste un SABI, te lo preguntará la primera vez.
+Para que sepa qué ticker buscar: si cargaste por ticker (Yahoo), ya lo tiene; si subiste un SABI, te lo preguntará la primera vez.
 
 ## Sincronización entre dispositivos (GitHub)
 

@@ -29,9 +29,9 @@ Eres **el ingeniero principal de Valora, una herramienta personal profesional de
 Todo lo demás (ratios, masas patrimoniales, Piotroski, sectorial) son **contexto** para responderla. El veredicto final es lo que el usuario realmente busca. Si una decisión de diseño aleja al usuario de poder responder esa pregunta rápido y con honestidad, repensar.
 
 **Tres fuentes de datos:**
-1. **Financial Modeling Prep (FMP)** — API REST. Cubre ~70.000 tickers globales (US, Europa, Asia). Fuente principal. El usuario tiene API key gratis (250 req/día).
-2. **SABI** — base de datos Bureau van Dijk / Moody's. El usuario sube el `.xlsx` exportado. Cubre ~todas las empresas españolas, cotizadas y no cotizadas. Fuente para análisis en profundidad de empresas no listadas o con histórico extenso.
-3. **Yahoo Finance** vía `corsproxy.io` para precios en vivo (sin API key).
+1. **Yahoo Finance** vía `corsproxy.io` (sin API key) — **fuente principal por ticker**. Endpoint `quoteSummary` con módulos `assetProfile`, `price`, `defaultKeyStatistics`, `financialData`, `balanceSheetHistory`, `incomeStatementHistory`, `cashflowStatementHistory`. Cubre ~70.000 tickers globales con 4 años de históricos. También se usa para precios en vivo (botón ↻).
+2. **SABI** — base de datos Bureau van Dijk / Moody's. El usuario sube el `.xlsx` exportado. Cubre ~todas las empresas españolas, cotizadas y no cotizadas. Fuente para análisis en profundidad de empresas no listadas o con histórico extenso (hasta 25 ejercicios).
+3. **Financial Modeling Prep (FMP)** — fallback opcional. El plan Basic gratuito de FMP dejó de cubrir los estados financieros históricos en 2024-2025 (devuelve HTTP 402 incluso para AAPL). Solo se usa si el usuario tiene plan Starter+ y configura la API key en Ajustes; entonces actúa como reintento automático cuando Yahoo falla. `fmpFetch` mantiene cascada `/api/v3/ → /stable/` con fallback en 402/403/404.
 
 **Sincronización entre dispositivos:** vía repo privado del usuario en GitHub (Personal Access Token + GitHub Contents API). Sin servidor intermediario.
 
@@ -255,8 +255,9 @@ La función `detectSector(companyInfo)` resuelve sector con esta prioridad: **(1
 
 ## 11. Cosas críticas que sé que no sabes (avisos)
 
-- **APIs cambian.** FMP cambia endpoints a veces. Si algo se rompe en producción y no sabes por qué, primero verifica el endpoint actual en `https://site.financialmodelingprep.com/developer/docs`.
-- **CORS proxies fallan.** Usamos `corsproxy.io` para Yahoo. Si cae, hay fallback a FMP. Si quieres añadir proxy adicional, considera `cors-anywhere`, `allorigins.win` — todos son frágiles.
+- **APIs cambian.** Yahoo Finance ocasionalmente cambia el formato de respuesta de `quoteSummary` (campos como `endDate.fmt` vs `endDate.raw`, módulos renombrados). Si los datos no se mapean, inspecciona la respuesta cruda en DevTools → Network. FMP también cambia endpoints; documentación en `https://site.financialmodelingprep.com/developer/docs`.
+- **CORS proxies fallan.** Usamos `corsproxy.io` para Yahoo (tanto `quoteSummary` como `chart` para precios). Si cae, no hay fuente principal disponible — el usuario tiene que esperar o pasar a SABI. Considera añadir `allorigins.win` o `cors-anywhere` como segundo proxy si el problema reincide.
+- **Plan Basic FMP ya no cubre financial-statements.** Desde 2024-2025 FMP devuelve 402 Payment Required en `/api/v3/profile`, `/balance-sheet-statement`, `/income-statement`, `/cash-flow-statement` para usuarios free, incluso con tickers US. Por eso Yahoo es la fuente principal — no perder este contexto.
 - **GitHub Pages tarda 1-2 min** en propagar cambios. Si "no se actualiza", no es bug, es propagación.
 - **localStorage es por origen.** La app en `https://miquel.github.io/sabi/` y `https://otrousuario.github.io/sabi/` no comparten datos (lógico, pero a veces confunde).
 - **Service Worker se queda con la versión vieja** hasta que cierres y reabras la app. Si haces cambios y "no los ves", cierra la app entera.

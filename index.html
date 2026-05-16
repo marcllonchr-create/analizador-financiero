@@ -1954,18 +1954,22 @@
     </div>
 
     <div class="settings-section">
-      <h4>Financial Modeling Prep <span id="fmp-status" class="settings-status off" style="margin-left:8px">Sin configurar</span></h4>
+      <h4>Financial Modeling Prep · fallback opcional <span id="fmp-status" class="settings-status off" style="margin-left:8px">Sin configurar</span></h4>
       <div class="desc">
-        Permite analizar cualquier empresa cotizada del mundo (~70.000 tickers) sin SABI. Gratis 250 requests/día.
-        Si no la has obtenido aún, regístrate, copia tu API key del dashboard y pégala aquí.
+        La fuente principal por ticker es <strong>Yahoo Finance</strong> (gratuita, sin API key). FMP queda como
+        fallback opcional para quien tenga plan Starter+ ($14/mes): si Yahoo no devuelve datos para un ticker,
+        se reintenta automáticamente con FMP si la API key está configurada aquí.
+        <br><br>
+        <span style="color:var(--warn);font-weight:500">⚠ El plan Basic gratuito de FMP dejó de cubrir los estados financieros históricos en 2024-2025.</span>
+        Con plan Basic verás errores 402 (Payment Required). Solo configura FMP si tienes Starter+.
       </div>
-      <input type="text" class="settings-input" id="inp-fmp-key" placeholder="Pega tu FMP API key aquí (ej: abc123xyz...)" oninput="onFMPKeyChange()">
+      <input type="text" class="settings-input" id="inp-fmp-key" placeholder="Opcional · pega tu FMP API key (Starter+) si quieres usarla como fallback" oninput="onFMPKeyChange()">
       <div class="settings-steps">
-        <strong>Cómo conseguir tu API key gratis:</strong>
+        <strong>Si decides activar FMP como fallback:</strong>
         <ol>
           <li>Ve a <a href="https://site.financialmodelingprep.com/developer/docs" target="_blank">financialmodelingprep.com/developer/docs</a></li>
-          <li>"Get my API key" → registrarte con email (gratis, sin tarjeta)</li>
-          <li>Confirma email → dashboard → copia la API key</li>
+          <li>Suscríbete a un plan que incluya los endpoints financial-statements (Starter o superior)</li>
+          <li>Dashboard → copia la API key</li>
           <li>Pégala arriba — se guarda en este navegador (no la enviamos a ningún sitio)</li>
         </ol>
       </div>
@@ -2024,7 +2028,7 @@
   <div class="source-tabs">
     <button class="source-tab active" data-source="fmp" onclick="switchSource('fmp')">
       <div class="source-title">Por ticker · Cualquier empresa cotizada</div>
-      <div class="source-sub">Búsqueda rápida por ticker bursátil (AAPL, MSFT, NESN.SW, MC.PA, ITX.MC…). Cubre ~70.000 empresas del mundo vía FMP.</div>
+      <div class="source-sub">Búsqueda rápida por ticker bursátil (AAPL, MSFT, NESN.SW, MC.PA, ITX.MC…). Datos vía Yahoo Finance — gratuito, sin API key. ~70.000 empresas del mundo.</div>
     </button>
     <button class="source-tab" data-source="sabi" onclick="switchSource('sabi')">
       <div class="source-title">Por archivo SABI · Análisis en profundidad</div>
@@ -2035,23 +2039,23 @@
   <!-- TICKER SEARCH (FMP) -->
   <div id="source-fmp" class="source-content">
     <div style="background:var(--paper);border:1px solid var(--line);padding:24px 28px">
-      <div style="font-family:var(--serif);font-size:18px;font-weight:600;margin-bottom:6px;color:var(--accent)">Analizar por ticker</div>
+      <div style="font-size:18px;font-weight:700;margin-bottom:6px;color:var(--accent)">Analizar por ticker</div>
       <div style="font-size:13px;color:var(--ink-soft);margin-bottom:14px;line-height:1.5">
-        Escribe el ticker bursátil de la empresa. Soporta los principales mercados del mundo.
+        Escribe el ticker bursátil de la empresa. Soporta los principales mercados del mundo. Datos vía <strong>Yahoo Finance</strong> (gratuito).
         <span id="fmp-warning" style="color:var(--warn);font-weight:500"></span>
       </div>
       <div class="ticker-input-row">
         <input type="text" id="inp-ticker" placeholder="ej: AAPL · MSFT · NVDA · NESN.SW · MC.PA · ITX.MC" autocomplete="off">
-        <button onclick="loadFromFMP()" id="btn-load-fmp">Analizar</button>
+        <button onclick="loadFromYahoo()" id="btn-load-fmp">Analizar</button>
       </div>
       <div class="ticker-suggestions">
         <span class="lab">Pruebas rápidas:</span>
-        <span class="ticker-suggestion" onclick="document.getElementById('inp-ticker').value='AAPL';loadFromFMP()">AAPL (Apple)</span>
-        <span class="ticker-suggestion" onclick="document.getElementById('inp-ticker').value='MSFT';loadFromFMP()">MSFT (Microsoft)</span>
-        <span class="ticker-suggestion" onclick="document.getElementById('inp-ticker').value='NVDA';loadFromFMP()">NVDA (NVIDIA)</span>
-        <span class="ticker-suggestion" onclick="document.getElementById('inp-ticker').value='ITX.MC';loadFromFMP()">ITX.MC (Inditex)</span>
-        <span class="ticker-suggestion" onclick="document.getElementById('inp-ticker').value='NESN.SW';loadFromFMP()">NESN.SW (Nestlé)</span>
-        <span class="ticker-suggestion" onclick="document.getElementById('inp-ticker').value='MC.PA';loadFromFMP()">MC.PA (LVMH)</span>
+        <span class="ticker-suggestion" onclick="document.getElementById('inp-ticker').value='AAPL';loadFromYahoo()">AAPL (Apple)</span>
+        <span class="ticker-suggestion" onclick="document.getElementById('inp-ticker').value='MSFT';loadFromYahoo()">MSFT (Microsoft)</span>
+        <span class="ticker-suggestion" onclick="document.getElementById('inp-ticker').value='NVDA';loadFromYahoo()">NVDA (NVIDIA)</span>
+        <span class="ticker-suggestion" onclick="document.getElementById('inp-ticker').value='ITX.MC';loadFromYahoo()">ITX.MC (Inditex)</span>
+        <span class="ticker-suggestion" onclick="document.getElementById('inp-ticker').value='NESN.SW';loadFromYahoo()">NESN.SW (Nestlé)</span>
+        <span class="ticker-suggestion" onclick="document.getElementById('inp-ticker').value='MC.PA';loadFromYahoo()">MC.PA (LVMH)</span>
       </div>
       <div id="fmp-loading" style="display:none" class="api-loading">
         <div class="spinner-big"></div>
@@ -5469,19 +5473,22 @@ function updateSettingsStatus() {
 
 // =======================================================
 // MODULE PWA-2 · FMP API (Financial Modeling Prep)
-// FMP migró el namespace recomendado a /stable/ (query-based) a finales de 2024.
-// El antiguo /api/v3/ (path-based) sigue funcionando para tickers US en plan Basic
-// pero algunos endpoints internacionales solo responden en /stable/.
-// fmpFetch intenta /stable/ primero; si 404 cae a /api/v3/ por compatibilidad.
-// Recibe `verb` + opcional `ticker` por separado para poder formatear ambos.
+// FMP mantiene dos namespaces: legacy /api/v3/ (path-based) y nuevo /stable/
+// (query-based, recomendado desde finales de 2024). Cobertura del plan free
+// varía entre endpoints — algunos solo están en uno u otro, y FMP a veces
+// devuelve 402 (Payment Required) en lugar de 404 cuando el endpoint existe
+// pero el plan no lo cubre.
+// Estrategia: probamos v3 primero (históricamente más permisivo en plan free)
+// y caemos a /stable/ si v3 responde 402/403/404. Solo errores reales
+// (401, 429, 5xx) se propagan sin fallback.
 // =======================================================
 async function fmpFetch(verb, ticker = null, params = {}) {
   const apiKey = localStorage.getItem('fmp_api_key');
   if (!apiKey) throw new Error('NO_API_KEY');
 
   // Build the two candidate URLs
-  const stable = new URL(`https://financialmodelingprep.com/stable/${verb}`);
   const legacy = new URL(`https://financialmodelingprep.com/api/v3/${verb}${ticker ? '/' + encodeURIComponent(ticker) : ''}`);
+  const stable = new URL(`https://financialmodelingprep.com/stable/${verb}`);
   if (ticker) stable.searchParams.set('symbol', ticker);
   for (const [k, v] of Object.entries(params)) {
     stable.searchParams.set(k, v);
@@ -5490,7 +5497,9 @@ async function fmpFetch(verb, ticker = null, params = {}) {
   stable.searchParams.set('apikey', apiKey);
   legacy.searchParams.set('apikey', apiKey);
 
-  const candidates = ticker ? [stable.toString(), legacy.toString()] : [legacy.toString()];
+  // Probar v3 primero (más permisivo en plan free); /stable/ como fallback.
+  const candidates = ticker ? [legacy.toString(), stable.toString()] : [legacy.toString()];
+  const FALLBACK_STATUSES = new Set([402, 403, 404]);  // plan limit / not-found → probar siguiente
   let lastErr = null;
   for (const url of candidates) {
     let res;
@@ -5501,8 +5510,10 @@ async function fmpFetch(verb, ticker = null, params = {}) {
       lastErr = e;
       continue;
     }
-    // 404 on stable → try legacy. 401/403/429 are real and we stop immediately.
-    if (res.status === 404) { lastErr = new Error('FMP_HTTP_404'); continue; }
+    if (FALLBACK_STATUSES.has(res.status)) {
+      lastErr = new Error(`FMP_HTTP_${res.status}`);
+      continue;
+    }
     if (!res.ok) throw new Error(`FMP_HTTP_${res.status}`);
     const data = await res.json();
     if (data && data['Error Message']) throw new Error(`FMP_API: ${data['Error Message']}`);
@@ -5543,17 +5554,9 @@ function switchSource(source) {
   });
   document.getElementById('source-sabi').style.display = source === 'sabi' ? 'block' : 'none';
   document.getElementById('source-fmp').style.display = source === 'fmp' ? 'block' : 'none';
-  // Update warning if FMP key missing
-  if (source === 'fmp') {
-    const warning = document.getElementById('fmp-warning');
-    if (warning) {
-      if (!localStorage.getItem('fmp_api_key')) {
-        warning.innerHTML = ' · ⚠ <a href="#" onclick="openSettings();return false" style="color:var(--warn);text-decoration:underline">Configura tu API key gratuita en Ajustes</a>';
-      } else {
-        warning.innerHTML = '';
-      }
-    }
-  }
+  // Limpiar warning · Yahoo Finance no requiere API key
+  const warning = document.getElementById('fmp-warning');
+  if (warning) warning.innerHTML = '';
 }
 
 async function loadFromFMP() {
@@ -5589,9 +5592,10 @@ async function loadFromFMP() {
     if (e.message === 'NO_API_KEY') msg = '⚠ Configura API key en Ajustes';
     else if (e.message === 'TICKER_NOT_FOUND') msg = `Ticker "${ticker}" no encontrado. Comprueba el sufijo (.MC para Madrid, .DE para Frankfurt...)`;
     else if (e.message.startsWith('FMP_HTTP_401')) msg = 'API key inválida o expirada';
-    else if (e.message.startsWith('FMP_HTTP_403')) msg = `Acceso denegado. Plan free agotó las 250 reqs/día o "${ticker}" requiere plan Starter+. Prueba con AAPL/MSFT/NVDA (US, plan free) para verificar.`;
+    else if (e.message.startsWith('FMP_HTTP_402')) msg = `Endpoint fuera del plan FMP actual. Aparece "Payment Required" para "${ticker}". El plan Basic gratuito de FMP ha restringido en 2025 los estados financieros históricos: ahora exigen Starter+ ($14/mes) incluso para tickers US. Verifica el plan en financialmodelingprep.com/pricing o usa SABI en la pestaña 02.`;
+    else if (e.message.startsWith('FMP_HTTP_403')) msg = `Acceso denegado. Plan free agotó las 250 reqs/día o "${ticker}" requiere plan Starter+. Prueba con AAPL/MSFT/NVDA (US) para verificar si es plan o ticker.`;
     else if (e.message.startsWith('FMP_HTTP_429')) msg = 'Demasiadas peticiones, espera unos segundos';
-    else if (e.message.startsWith('FMP_HTTP_404')) msg = `Ticker "${ticker}" no encontrado en /stable/ ni en /api/v3/. Verifica el sufijo (.MC, .DE, .SW, .PA, .L).`;
+    else if (e.message.startsWith('FMP_HTTP_404')) msg = `Ticker "${ticker}" no encontrado en /api/v3/ ni en /stable/. Verifica el sufijo (.MC, .DE, .SW, .PA, .L).`;
     else if (e.message === 'NO_FINANCIAL_DATA') msg = 'No hay estados financieros disponibles para este ticker';
     else if (e.message === 'FMP_TIMEOUT') msg = 'Tiempo de espera agotado (>10s). Verifica la conexión.';
     showToast('✗ ' + msg);
@@ -5702,6 +5706,233 @@ function buildDatasetFromFMP(profile, balance, income, cashFlow) {
     const sharesEstimate = Math.round(profile.mktCap / profile.price);
     document.getElementById('inp-shares').value = sharesEstimate;
   }
+  renderInvestment();
+}
+
+// =======================================================
+// MODULE PWA-3b · YAHOO FINANCE quoteSummary
+// Fuente PRINCIPAL gratuita para análisis por ticker (FMP plan Basic dejó de
+// cubrir los estados financieros históricos en 2024-2025, exigen Starter $14/mes).
+// Yahoo Finance vía corsproxy.io: 4 años de balance/income/cashflow, sin API key.
+// Limitación conocida: ocasionalmente cambia formato, depende del proxy CORS.
+// =======================================================
+async function yfFetch(ticker, modules) {
+  const moduleStr = modules.join(',');
+  const url = `https://query2.finance.yahoo.com/v10/finance/quoteSummary/${encodeURIComponent(ticker)}?modules=${moduleStr}`;
+  const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(url)}`;
+  let res;
+  try {
+    res = await fetchWithTimeout(proxyUrl, {}, 10000);
+  } catch (e) {
+    if (e.name === 'AbortError') throw new Error('YF_TIMEOUT');
+    throw e;
+  }
+  if (!res.ok) throw new Error(`YF_HTTP_${res.status}`);
+  const json = await res.json();
+  if (json && json.quoteSummary && json.quoteSummary.error) {
+    const err = json.quoteSummary.error;
+    if (err.code === 'Not Found' || /not found/i.test(err.description || '')) throw new Error('TICKER_NOT_FOUND');
+    throw new Error(`YF_API: ${err.description || err.code || 'unknown'}`);
+  }
+  const result = json && json.quoteSummary && json.quoteSummary.result && json.quoteSummary.result[0];
+  if (!result) throw new Error('TICKER_NOT_FOUND');
+  return result;
+}
+
+// Yahoo devuelve casi todos los números como { raw: <number>, fmt: <string> }.
+// Esta helper extrae el .raw probando varias claves alternativas.
+function yfNum(obj, ...keys) {
+  if (!obj) return 0;
+  for (const k of keys) {
+    const v = obj[k];
+    if (v && typeof v === 'object' && 'raw' in v && typeof v.raw === 'number') return v.raw;
+    if (typeof v === 'number') return v;
+  }
+  return 0;
+}
+
+async function loadFromYahoo() {
+  const ticker = document.getElementById('inp-ticker').value.trim().toUpperCase();
+  if (!ticker) { showToast('Introduce un ticker'); return; }
+  const btn = document.getElementById('btn-load-fmp');
+  const loadingDiv = document.getElementById('fmp-loading');
+  const loadingMsg = document.getElementById('fmp-loading-msg');
+  if (btn) btn.disabled = true;
+  if (loadingDiv) loadingDiv.style.display = 'block';
+  if (loadingMsg) loadingMsg.textContent = `Descargando ${ticker}...`;
+  try {
+    const data = await yfFetch(ticker, [
+      'assetProfile', 'price', 'summaryDetail',
+      'defaultKeyStatistics', 'financialData',
+      'balanceSheetHistory', 'incomeStatementHistory', 'cashflowStatementHistory'
+    ]);
+    const hasBS = data.balanceSheetHistory && data.balanceSheetHistory.balanceSheetStatements && data.balanceSheetHistory.balanceSheetStatements.length;
+    const hasIS = data.incomeStatementHistory && data.incomeStatementHistory.incomeStatementHistory && data.incomeStatementHistory.incomeStatementHistory.length;
+    if (!hasBS || !hasIS) throw new Error('NO_FINANCIAL_DATA');
+    if (loadingMsg) {
+      const name = (data.price && (data.price.longName || data.price.shortName)) || ticker;
+      loadingMsg.textContent = `Procesando ${name}...`;
+    }
+    buildDatasetFromYahoo(data, ticker);
+    const name = (data.price && (data.price.longName || data.price.shortName)) || ticker;
+    showToast(`✓ Cargada: ${name}`);
+    if (loadingDiv) loadingDiv.style.display = 'none';
+  } catch (e) {
+    console.error('Yahoo error:', e);
+    // Fallback opcional a FMP si el usuario tiene API key configurada
+    if (localStorage.getItem('fmp_api_key') && e.message !== 'NO_FINANCIAL_DATA') {
+      if (loadingMsg) loadingMsg.textContent = `Yahoo falló; reintentando con FMP...`;
+      try {
+        return await loadFromFMP();
+      } catch (e2) {
+        console.error('FMP fallback error:', e2);
+      }
+    }
+    let msg = 'Error: ' + e.message;
+    if (e.message === 'TICKER_NOT_FOUND') msg = `Ticker "${ticker}" no encontrado en Yahoo Finance. Verifica el sufijo (.MC, .DE, .SW, .PA, .L).`;
+    else if (e.message === 'NO_FINANCIAL_DATA') msg = `Yahoo no devuelve estados financieros para "${ticker}". Algunos tickers (small caps, ADRs raros, ETFs) tienen cobertura limitada.`;
+    else if (e.message === 'YF_TIMEOUT') msg = 'Tiempo de espera agotado (>10s). El proxy CORS (corsproxy.io) puede estar caído; reintenta en 1 minuto.';
+    else if (e.message.startsWith('YF_HTTP_')) msg = `Yahoo Finance respondió ${e.message.replace('YF_HTTP_','HTTP ')}. Reintenta o prueba otro ticker.`;
+    else if (e.message.startsWith('YF_API:')) msg = `Yahoo Finance: ${e.message.slice(8)}`;
+    showToast('✗ ' + msg);
+    if (loadingDiv) loadingDiv.style.display = 'none';
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
+function buildDatasetFromYahoo(data, ticker) {
+  // Reset state
+  rawRows = [];
+  yearsData = [];
+  extractedData = {};
+  availableBlocks = [{ name: 'Yahoo', startRow: 0, endRow: 0 }];
+  currentBlockIdx = 0;
+  blockLabelIndex = [];
+  ratiosCache = null;
+
+  const price = data.price || {};
+  const profile = data.assetProfile || {};
+  const stats = data.defaultKeyStatistics || {};
+  const summary = data.summaryDetail || {};
+
+  // Yahoo expresa los valores en la moneda nativa del listing y en absoluto (1 = 1 unidad).
+  const currency = price.currency || summary.currency || 'USD';
+  unitInfo = {
+    multiplier: 1,
+    label: currency === 'EUR' ? '€' : currency === 'USD' ? '$' : currency,
+    long: currency,
+    currency
+  };
+
+  companyInfo = {
+    name: price.longName || price.shortName || ticker,
+    activity: profile.longBusinessSummary
+      ? profile.longBusinessSummary.slice(0, 200) + (profile.longBusinessSummary.length > 200 ? '…' : '')
+      : '',
+    constitution: '',
+    employees: profile.fullTimeEmployees ? profile.fullTimeEmployees.toString() : '',
+    fmp_sector: profile.sector || '',
+    industry: profile.industry || '',
+    ticker: ticker,
+    exchange: price.exchangeName || price.exchange || '',
+    isYahoo: true
+  };
+
+  // Yahoo financial histories — index by year
+  const bsList = (data.balanceSheetHistory && data.balanceSheetHistory.balanceSheetStatements) || [];
+  const isList = (data.incomeStatementHistory && data.incomeStatementHistory.incomeStatementHistory) || [];
+  const cfList = (data.cashflowStatementHistory && data.cashflowStatementHistory.cashflowStatements) || [];
+
+  const yearOf = (stmt) => {
+    const d = stmt.endDate;
+    if (!d) return null;
+    if (typeof d === 'object' && d.fmt) return parseInt(d.fmt.slice(0, 4));
+    if (typeof d === 'object' && typeof d.raw === 'number') return new Date(d.raw * 1000).getUTCFullYear();
+    if (typeof d === 'number') return new Date(d * 1000).getUTCFullYear();
+    if (typeof d === 'string') return parseInt(d.slice(0, 4));
+    return null;
+  };
+
+  const byYear = new Map();
+  for (const s of bsList) { const y = yearOf(s); if (y) { if (!byYear.has(y)) byYear.set(y, {}); byYear.get(y).bs = s; } }
+  for (const s of isList) { const y = yearOf(s); if (y) { if (!byYear.has(y)) byYear.set(y, {}); byYear.get(y).is = s; } }
+  for (const s of cfList) { const y = yearOf(s); if (y) { if (!byYear.has(y)) byYear.set(y, {}); byYear.get(y).cf = s; } }
+
+  // Solo años con balance + income disponibles
+  const years = [...byYear.entries()]
+    .filter(([, d]) => d.bs && d.is)
+    .map(([y]) => y)
+    .sort((a, b) => b - a);
+
+  for (const year of years) {
+    const label = `31/12/${year}`;
+    yearsData.push({ year, label, col: -1 });
+    const e = byYear.get(year);
+    const bs = e.bs || {};
+    const is = e.is || {};
+    const cf = e.cf || {};
+
+    const revenue = yfNum(is, 'totalRevenue');
+    const netIncome = yfNum(is, 'netIncome');
+    const incomeBeforeTax = yfNum(is, 'incomeBeforeTax');
+    const operatingIncome = yfNum(is, 'operatingIncome', 'ebit');
+    const grossProfit = yfNum(is, 'grossProfit');
+    const costOfRevenue = yfNum(is, 'costOfRevenue');
+    const interestExpense = Math.abs(yfNum(is, 'interestExpense'));
+
+    const totalAssets = yfNum(bs, 'totalAssets');
+    const totalEquity = yfNum(bs, 'totalStockholderEquity');
+    const totalCurrentAssets = yfNum(bs, 'totalCurrentAssets');
+    const totalCurrentLiab = yfNum(bs, 'totalCurrentLiabilities');
+    const totalLiab = yfNum(bs, 'totalLiab');
+    const totalNonCurrentAssets = totalAssets - totalCurrentAssets;
+    const totalNonCurrentLiab = Math.max(0, totalLiab - totalCurrentLiab);
+    const inventory = yfNum(bs, 'inventory');
+    const cash = yfNum(bs, 'cash') + yfNum(bs, 'shortTermInvestments');
+    const receivables = yfNum(bs, 'netReceivables');
+    const accountsPayable = yfNum(bs, 'accountsPayable');
+    const shortTermDebt = yfNum(bs, 'shortLongTermDebt', 'shortTermDebt');
+    const longTermDebt = yfNum(bs, 'longTermDebt');
+
+    const depreciation = Math.abs(yfNum(cf, 'depreciation'));
+    const ebitda = (operatingIncome && depreciation) ? operatingIncome + depreciation : null;
+
+    extractedData[label] = {
+      _year: year, _label: label,
+      ventas: revenue,
+      bn: netIncome,
+      bai: incomeBeforeTax,
+      baii: operatingIncome,
+      ebitda: ebitda,
+      rdo_bruto: grossProfit,
+      gastos_fin: interestExpense,
+      amortizaciones: depreciation,
+      consumo_merc: costOfRevenue,
+      activo_total: totalAssets,
+      pn: totalEquity,
+      pnc: totalNonCurrentLiab,
+      pc: totalCurrentLiab,
+      inmovilizado: totalNonCurrentAssets,
+      ac: totalCurrentAssets,
+      existencias: inventory,
+      tesoreria: cash,
+      deudores: receivables,
+      acreedores_com: accountsPayable,
+      deudas_fin: shortTermDebt + longTermDebt
+    };
+  }
+
+  // Render
+  renderCompanyCard();
+  renderAnalysis();
+
+  // Auto-fill price y shares desde Yahoo
+  const livePrice = yfNum(price, 'regularMarketPrice');
+  if (livePrice) document.getElementById('inp-price').value = livePrice;
+  const sharesOut = yfNum(stats, 'sharesOutstanding') || yfNum(price, 'sharesOutstanding');
+  if (sharesOut) document.getElementById('inp-shares').value = Math.round(sharesOut);
+
   renderInvestment();
 }
 
