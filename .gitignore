@@ -1,0 +1,43 @@
+# Claude Code session data (transcripts, memory) — nunca al repo
+.claude/
+
+# OneDrive / Windows metadata
+desktop.ini
+Thumbs.db
+ehthumbs.db
+*.lnk
+
+# macOS metadata (por si el repo se clona en Mac)
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Editor / IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Temporales y backups
+*.tmp
+*.bak
+*.old
+*.orig
+
+# Secretos · por defensa, aunque la app no usa env vars (todo vive en localStorage del navegador)
+.env
+.env.*
+*.local
+secrets/
+credentials.json
+
+# Build artefacts hipotéticos (la app NO tiene build step actualmente)
+node_modules/
+dist/
+build/
+.cache/
+
+# Logs
+*.log
+npm-debug.log*
