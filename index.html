@@ -2487,13 +2487,55 @@ const EV_SALES_MULTIPLES = {
   "_default":                { value: 1.5, label: "Mediana mercado" }
 };
 
+// =======================================================
+// Normalización sectorial (fix post-bloque-1)
+// Alpha Vantage devuelve sectores en formato variable: "FINANCE" (mayúsculas),
+// "Financial Services", "TECHNOLOGY", "Technology". FMP usa Title Case más
+// consistente. Esta función mapea cualquier variante a una clave canónica
+// del SECTOR_MULTIPLES map. Devuelve el raw original si no hay match,
+// que caerá al fallback `_default`.
+// =======================================================
+function normalizeSector(raw) {
+  if (!raw) return '';
+  const s = raw.toString().trim().toLowerCase();
+  if (!s) return '';
+  // Patrones exhaustivos · orden importa (más específico primero)
+  if (/\b(financ|bank|insur|capital markets?|asset manag|broker|exchange)\b/.test(s)) return 'Financial Services';
+  if (/\b(tech|software|semi|computer|electron|internet|it services)\b/.test(s)) return 'Technology';
+  if (/\b(communication|telecom|media|broadcast|publish|entertain)\b/.test(s)) return 'Communication Services';
+  if (/\b(consumer cyclical|consumer disc|retail|apparel|auto|hotel|restaurant|leisure)\b/.test(s)) return 'Consumer Cyclical';
+  if (/\b(consumer defensive|consumer staples|food|beverage|tobacco|household)\b/.test(s)) return 'Consumer Defensive';
+  if (/\b(health|pharma|biotech|medical|drug)\b/.test(s)) return 'Healthcare';
+  if (/\b(real estate|reit)\b/.test(s)) return 'Real Estate';
+  if (/\b(industrial|manufactur|aerospace|defense|construct|engineer|machinery|transport)\b/.test(s)) return 'Industrials';
+  if (/\b(energy|oil|gas|petroleum|coal)\b/.test(s)) return 'Energy';
+  if (/\b(materials?|chemicals?|metals?|mining|steel|paper|forest)\b/.test(s)) return 'Materials';
+  if (/\b(utilit|electric|water utility|regulated)\b/.test(s)) return 'Utilities';
+  return raw;
+}
+function isFinancialSector(raw) {
+  return normalizeSector(raw) === 'Financial Services';
+}
+function isUtilitySector(raw) {
+  return normalizeSector(raw) === 'Utilities';
+}
+function isREITSector(rawSector, industry) {
+  if (normalizeSector(rawSector) === 'Real Estate') return true;
+  return industry && /reit|real estate/i.test(industry);
+}
+
 function getSectorMultiples(sector) {
   if (!sector) return SECTOR_MULTIPLES._default;
-  return SECTOR_MULTIPLES[sector] || SECTOR_MULTIPLES._default;
+  // Probar literal primero (rápido); si no, normalizar y reintentar
+  if (SECTOR_MULTIPLES[sector]) return SECTOR_MULTIPLES[sector];
+  const norm = normalizeSector(sector);
+  return SECTOR_MULTIPLES[norm] || SECTOR_MULTIPLES._default;
 }
 function getEVSalesMultiple(sector) {
   if (!sector) return EV_SALES_MULTIPLES._default;
-  return EV_SALES_MULTIPLES[sector] || EV_SALES_MULTIPLES._default;
+  if (EV_SALES_MULTIPLES[sector]) return EV_SALES_MULTIPLES[sector];
+  const norm = normalizeSector(sector);
+  return EV_SALES_MULTIPLES[norm] || EV_SALES_MULTIPLES._default;
 }
 
 // Auto-rellenar inputs PER/EV-EBITDA con múltiplos del sector detectado.
@@ -2803,8 +2845,22 @@ function mapCNAE(code) {
 // Look up FMP industry, then FMP sector as fallback
 function mapFMP(info) {
   if (!info) return null;
-  if (info.industry && FMP_INDUSTRY_TO_DAMODARAN[info.industry]) return FMP_INDUSTRY_TO_DAMODARAN[info.industry];
-  if (info.fmp_sector && FMP_SECTOR_TO_DAMODARAN[info.fmp_sector]) return FMP_SECTOR_TO_DAMODARAN[info.fmp_sector];
+  // Industry · match exacto primero, luego normalizado (Title Case-equivalente)
+  if (info.industry) {
+    if (FMP_INDUSTRY_TO_DAMODARAN[info.industry]) return FMP_INDUSTRY_TO_DAMODARAN[info.industry];
+    // AV usa industry en MAYÚSCULAS (ej: "STATE COMMERCIAL BANKS"). FMP usa Title Case.
+    // Probar versión Title Case-ish para industry no es trivial; intentamos match case-insensitive.
+    const ind = info.industry.toString().toLowerCase();
+    for (const k of Object.keys(FMP_INDUSTRY_TO_DAMODARAN)) {
+      if (k.toLowerCase() === ind) return FMP_INDUSTRY_TO_DAMODARAN[k];
+    }
+  }
+  // Sector · match exacto primero, luego normalizado a clave canónica
+  if (info.fmp_sector) {
+    if (FMP_SECTOR_TO_DAMODARAN[info.fmp_sector]) return FMP_SECTOR_TO_DAMODARAN[info.fmp_sector];
+    const norm = normalizeSector(info.fmp_sector);
+    if (norm && FMP_SECTOR_TO_DAMODARAN[norm]) return FMP_SECTOR_TO_DAMODARAN[norm];
+  }
   return null;
 }
 
@@ -3572,7 +3628,14 @@ function renderCompanyCard() {
   const meta = [];
   if (companyInfo.ticker)       meta.push(`<span>Ticker <strong>${esc(companyInfo.ticker)}</strong>${companyInfo.exchange ? ` · ${esc(companyInfo.exchange)}` : ''}</span>`);
   if (companyInfo.activity)     meta.push(`<span>Actividad <strong>${esc(companyInfo.activity)}</strong></span>`);
-  if (companyInfo.constitution) meta.push(`<span>Constituida <strong>${esc(companyInfo.constitution)}</strong></span>`);
+  // Fix 6a · suprimir constitution si es posterior al año fiscal más antiguo.
+  // Cuando viene de AV LatestQuarter (bug previo), se mostraba 2026-03-31 para AAPL, lo cual es absurdo.
+  if (companyInfo.constitution) {
+    const constYear = parseInt(String(companyInfo.constitution).slice(0, 4));
+    const oldestFiscalYear = yearsData.length > 0 ? Math.min(...yearsData.map(y => y.year)) : null;
+    const isPlausible = !isNaN(constYear) && (oldestFiscalYear === null || constYear <= oldestFiscalYear);
+    if (isPlausible) meta.push(`<span>Constituida <strong>${esc(companyInfo.constitution)}</strong></span>`);
+  }
   if (companyInfo.employees)    meta.push(`<span>Empleados <strong>${esc(companyInfo.employees)}</strong></span>`);
   // Sector detection trace: muestra el CNAE crudo (SABI) o el industry (FMP) y el sector Damodaran mapeado
   const sectorKey = detectSector(companyInfo);
@@ -4248,6 +4311,31 @@ function renderInvestment() {
   // Calcular business profile ANTES de cualquier render que dependa de él (fix 1.5)
   currentBusinessProfile = computeBusinessProfile(yearsUse);
 
+  // Validación de integridad de datos · warning al inicio si AV/SABI devolvió anomalías (fix 6b)
+  const integrityIssues = validateDataIntegrity(yearsUse);
+  const qualityEl = document.getElementById('inv-quality');
+  if (integrityIssues.length > 0) {
+    // Pre-pend al contenedor de quality. renderQuality lo sobrescribirá; lo añadimos antes
+    // mediante un contenedor de fix-banners propio.
+    let banner = document.getElementById('inv-integrity-banner');
+    if (!banner) {
+      banner = document.createElement('div');
+      banner.id = 'inv-integrity-banner';
+      banner.style.marginBottom = '14px';
+      if (qualityEl && qualityEl.parentNode) qualityEl.parentNode.insertBefore(banner, qualityEl);
+    }
+    banner.innerHTML = `<div class="info-box" style="border-left-color:var(--warn);color:var(--warn)">
+      <strong>⚠ Anomalías detectadas en los datos:</strong> Alpha Vantage ha devuelto valores que pueden afectar la fiabilidad de algunos ratios. Considera cross-validar con el 10-K / informe anual de la empresa antes de tomar decisiones.
+      <ul style="margin-top:6px;padding-left:20px;font-size:12px">
+        ${integrityIssues.slice(0, 6).map(i => `<li>${esc(i)}</li>`).join('')}
+        ${integrityIssues.length > 6 ? `<li style="font-style:italic">... y ${integrityIssues.length - 6} más</li>` : ''}
+      </ul>
+    </div>`;
+  } else {
+    const banner = document.getElementById('inv-integrity-banner');
+    if (banner) banner.innerHTML = '';
+  }
+
   renderMasas(yearsUse);
   renderCrecimiento(yearsUse);
   renderCapital(yearsUse);
@@ -4488,10 +4576,27 @@ function detectRedFlags(d, prev) {
     });
   }
 
-  // 6. Debt growing fast
+  // 6. Debt growing fast · NO aplica a financieras (su PNC es captación de fondos = depósitos
+  // a largo plazo, bonos, no deuda corporativa). En su lugar, detectar anomalías de clasificación:
+  // si PNC y PC se mueven en direcciones opuestas con magnitudes >50% YoY, es probable que AV
+  // haya reclasificado partidas entre corrientes y no corrientes, no que la empresa esté
+  // genuinamente "endeudándose más a largo plazo".
+  const sectorRed = (companyInfo && companyInfo.fmp_sector) || '';
+  const industryRed = (companyInfo && companyInfo.industry) || '';
+  const isFinancialRed = isFinancialSector(sectorRed);
   if (d.pnc && prev.pnc && prev.pnc > 0) {
     const debtGrowth = (d.pnc - prev.pnc) / prev.pnc;
-    if (debtGrowth > 0.30) {
+    const pcGrowth = (d.pc && prev.pc && prev.pc > 0) ? (d.pc - prev.pc) / prev.pc : 0;
+    // Detección de anomalía: signos opuestos y ambos > 50% en magnitud
+    const oppositeShift = (debtGrowth > 0.50 && pcGrowth < -0.50) || (debtGrowth < -0.50 && pcGrowth > 0.50);
+    if (oppositeShift) {
+      flags.push({
+        severity: 'warn',
+        title: 'Anomalía de clasificación de balance',
+        detail: `Pasivo no corriente y pasivo corriente se mueven en direcciones opuestas con magnitudes ${(Math.abs(debtGrowth)*100).toFixed(0)}% / ${(Math.abs(pcGrowth)*100).toFixed(0)}% YoY. Probablemente AV ha reclasificado partidas entre corriente y no corriente (vencimientos a 12m, deuda refinanciada), no un cambio de fondo en la estructura. Verifica con el 10-K.`
+      });
+    } else if (!isFinancialRed && debtGrowth > 0.30) {
+      // Red flag normal: solo se aplica a empresas no financieras
       flags.push({
         severity: 'warn',
         title: 'Deuda a largo plazo crece rápidamente',
@@ -4712,9 +4817,11 @@ function computeNetDebt(d, userOverride) {
   const k = unitInfo.multiplier;
   const ddf = (d.deudas_fin || 0) * k;
   const sector = (companyInfo && companyInfo.fmp_sector) || '';
+  const industry = (companyInfo && companyInfo.industry) || '';
   // En financieras/REITs, las inversiones a LP son activos operativos del negocio
   // (cartera de préstamos, propiedades de inversión), no excedente de tesorería.
-  const isFinancialLike = /financial|real estate/i.test(sector);
+  // Usa el normalizer robusto que acepta variantes "FINANCE"/"Finance"/etc.
+  const isFinancialLike = isFinancialSector(sector) || isREITSector(sector, industry);
 
   // ¿Tenemos desglose de tesorería + inversiones de AV / FMP?
   const cashOnly = (d.cash_only || 0) * k;
@@ -4825,12 +4932,12 @@ function computeBusinessProfile(years) {
   const dPrev = prev ? extractedData[prev.label] : null;
   if (!d) return null;
 
-  // Sector / industry desde companyInfo
+  // Sector / industry desde companyInfo (con normalización robusta de variantes)
   const sector = (companyInfo && companyInfo.fmp_sector) || '';
   const industry = (companyInfo && companyInfo.industry) || '';
-  const isFinancial = /financial/i.test(sector);
-  const isREIT = /reit/i.test(industry) || /real estate/i.test(sector);
-  const isUtility = /utilit/i.test(sector);
+  const isFinancial = isFinancialSector(sector);
+  const isREIT = isREITSector(sector, industry);
+  const isUtility = isUtilitySector(sector);
 
   // Estado coyuntural
   const isLossMaking = (d.bn || 0) < 0;
@@ -4927,6 +5034,85 @@ function computeBusinessProfile(years) {
 let currentBusinessProfile = null;
 
 // =======================================================
+// validateDataIntegrity (fix 6b)
+// Detecta anomalías típicas de Alpha Vantage o de exports SABI corruptos.
+// Devuelve un array de strings con cada anomalía descriptiva. Si vuelve vacío,
+// los datos son razonablemente consistentes. Renderiza un warning informativo
+// al inicio del informe cuando aplica (no bloquea el análisis).
+// =======================================================
+function validateDataIntegrity(years) {
+  const issues = [];
+  if (!years || years.length === 0) return issues;
+  const recent = years[years.length - 1];
+  const d = extractedData[recent.label];
+  if (!d) return issues;
+
+  // --- Magnitudes que no deberían ser negativas ---
+  const nonNegative = [
+    ['existencias', 'Existencias'],
+    ['ventas', 'Ventas'],
+    ['activo_total', 'Activo total'],
+    ['ac', 'Activo corriente'],
+    ['inmovilizado', 'Inmovilizado'],
+    ['pc', 'Pasivo corriente'],
+    ['pnc', 'Pasivo no corriente'],
+    ['deudores', 'Deudores'],
+    ['acreedores_com', 'Acreedores comerciales'],
+    ['deudas_fin', 'Deudas financieras']
+  ];
+  for (const [key, label] of nonNegative) {
+    if (d[key] !== null && d[key] !== undefined && !isNaN(d[key]) && d[key] < 0) {
+      issues.push(`${label} ${recent.year} reportado como negativo (${fmtMilEUR(d[key] * unitInfo.multiplier)}). Probable error de signo.`);
+    }
+  }
+
+  // --- Activo total ≈ Inmovilizado + AC (tolerancia 10%) ---
+  if (d.activo_total && d.activo_total > 0 && d.inmovilizado !== null && d.ac !== null) {
+    const sum = (d.inmovilizado || 0) + (d.ac || 0);
+    const diffPct = Math.abs(sum - d.activo_total) / d.activo_total;
+    if (diffPct > 0.10) {
+      issues.push(`Activo total (${fmtMilEUR(d.activo_total * unitInfo.multiplier)}) no cuadra con Inmovilizado + AC (${fmtMilEUR(sum * unitInfo.multiplier)}). Diferencia ${(diffPct*100).toFixed(0)}%.`);
+    }
+  }
+
+  // --- Saltos YoY absurdos en partidas estructurales (>500% de manera aislada) ---
+  if (years.length >= 2) {
+    const prev = extractedData[years[years.length - 2].label];
+    if (prev) {
+      const huge = [
+        ['activo_total', 'Activo total'],
+        ['pn', 'Patrimonio neto'],
+        ['ventas', 'Ventas'],
+        ['inmovilizado', 'Inmovilizado']
+      ];
+      for (const [key, label] of huge) {
+        if (prev[key] && Math.abs(prev[key]) > 0 && d[key] !== null) {
+          const change = (d[key] - prev[key]) / Math.abs(prev[key]);
+          if (Math.abs(change) > 5) {
+            issues.push(`${label} cambia ${(change*100).toFixed(0)}% YoY (${fmtMilEUR(prev[key] * unitInfo.multiplier)} → ${fmtMilEUR(d[key] * unitInfo.multiplier)}). Salto sospechoso.`);
+          }
+        }
+      }
+    }
+  }
+
+  // --- Campos críticos null/None en el año más reciente ---
+  const critical = [
+    ['activo_total', 'Activo total'],
+    ['pn', 'Patrimonio neto'],
+    ['ventas', 'Ventas'],
+    ['bn', 'Beneficio neto']
+  ];
+  for (const [key, label] of critical) {
+    if (d[key] === null || d[key] === undefined) {
+      issues.push(`${label} del año más reciente (${recent.year}) no disponible en los datos.`);
+    }
+  }
+
+  return issues;
+}
+
+// =======================================================
 // contextualizeVerdict (fix 1.5)
 // Aplica salvaguardas según businessProfile co-confirmado. Devuelve un nuevo verdict
 // (con status='neutral' cuando aplica) o el original. NUNCA suprime en distress.
@@ -4938,11 +5124,31 @@ function contextualizeVerdict(raw, kind, profile) {
   if (profile.isInDistress) return raw; // nunca contextualizar en distress
 
   // --- Liquidez / acid test / tesorería ---
-  if ((kind === 'liquidez' || kind === 'acid_test' || kind === 'tesoreria') && profile.hasLegitimateNegativeWC) {
+  if (kind === 'liquidez' || kind === 'acid_test' || kind === 'tesoreria') {
+    if (profile.isFinancial) {
+      return {
+        status: 'neutral',
+        kind,
+        text: 'No interpretable en entidades financieras: el pasivo corriente bancario está dominado por depósitos a la vista. La liquidez se evalúa por LCR (Liquidity Coverage Ratio), NSFR (Net Stable Funding Ratio) y métricas regulatorias.',
+        raw
+      };
+    }
+    if (profile.hasLegitimateNegativeWC) {
+      return {
+        status: 'neutral',
+        kind,
+        text: 'Fondo de maniobra negativo habitual en este modelo (alta rotación de stocks, financiación por proveedores). FCF positivo sostenido y Piotroski sólido confirman que no indica riesgo concursal.',
+        raw
+      };
+    }
+  }
+
+  // --- Ratio de gastos financieros ---
+  if (kind === 'gastos_fin_ratio' && profile.isFinancial) {
     return {
       status: 'neutral',
       kind,
-      text: 'Fondo de maniobra negativo habitual en este modelo (alta rotación de stocks, financiación por proveedores). FCF positivo sostenido y Piotroski sólido confirman que no indica riesgo concursal.',
+      text: 'En entidades financieras los gastos por intereses son coste operativo (pago a depositantes / bonistas), no carga financiera por endeudamiento. La rentabilidad se evalúa por NIM (Net Interest Margin), no por este ratio.',
       raw
     };
   }
@@ -6395,12 +6601,19 @@ function buildDatasetFromAV(overview, balance, income, cashflow, ticker) {
     currency
   };
 
+  // Log diagnóstico · variantes de sector/industry de AV (debug post-bloque-1)
+  console.info(`AV OVERVIEW · ${ticker} · Sector="${overview.Sector}" · Industry="${overview.Industry}" · IpoDate="${overview.IpoDate || overview.IPODate || ''}" · LatestQuarter="${overview.LatestQuarter || ''}"`);
+
+  // Fix 6a · IpoDate como fecha de constitución (era LatestQuarter, que es fin trimestre fiscal).
+  // Si la fecha es posterior al año fiscal más antiguo de los datos, se suprime en renderCompanyCard.
+  const ipoDate = overview.IpoDate || overview.IPODate || '';
+
   companyInfo = {
     name: overview.Name || ticker,
     activity: overview.Description
       ? overview.Description.slice(0, 200) + (overview.Description.length > 200 ? '…' : '')
       : '',
-    constitution: overview.LatestQuarter || '',
+    constitution: (ipoDate && ipoDate !== 'None') ? ipoDate : '',
     employees: overview.FullTimeEmployees && overview.FullTimeEmployees !== 'None' ? overview.FullTimeEmployees : '',
     fmp_sector: overview.Sector || '',
     industry: overview.Industry || '',
@@ -6966,6 +7179,10 @@ function renderValuation(years, price, shares, wacc, gTerm, gFCF, perObj, evEbit
   const cagr = computeCAGR(years);
   const N = shares;
 
+  // Profile-aware flags (fix post-bloque-1 · propagación isFinancial al § I·05)
+  const profile = currentBusinessProfile || {};
+  const isFinancialFlow = !!profile.isFinancial;
+
   // Bail if no shares
   if (!N || N <= 0) {
     document.getElementById('inv-valuation').innerHTML =
@@ -7079,7 +7296,7 @@ function renderValuation(years, price, shares, wacc, gTerm, gFCF, perObj, evEbit
     </div>
   </div>`;
 
-  // EV/EBITDA (only meaningful if EBITDA > 0)
+  // EV/EBITDA (only meaningful if EBITDA > 0 AND not isFinancial)
   const inpEvEl = document.getElementById('inp-ev-ebitda');
   const evSource = inpEvEl ? (inpEvEl.dataset.source || 'default') : 'default';
   const evSectorLabel = inpEvEl ? (inpEvEl.dataset.sectorLabel || '') : '';
@@ -7090,6 +7307,17 @@ function renderValuation(years, price, shares, wacc, gTerm, gFCF, perObj, evEbit
       : evSource === 'omitted'
         ? `<span style="display:inline-block;padding:2px 8px;background:var(--surface);color:var(--ink-mute);font-size:10px;text-transform:uppercase;letter-spacing:0.10em;font-weight:700;border-radius:var(--r);margin-left:8px">No aplicable · ${esc(evSectorLabel)}</span>`
         : '';
+  // Card EV/EBITDA degradada en entidades financieras (fix post-bloque-1)
+  if (isFinancialFlow) {
+    html += `<div class="valuation-card" style="opacity:0.6">
+      <div class="valuation-card-title">Método de múltiplos · EV/EBITDA ${evSourceBadge}<span style="color:var(--neutral);font-size:11px;font-weight:600;margin-left:6px;text-transform:uppercase;letter-spacing:0.08em">No aplicable</span></div>
+      <div class="valuation-card-sub">EV/EBITDA no es interpretable en entidades financieras (banca/seguros): el EBITDA no captura el margen real de un negocio cuyo coste principal son intereses pagados a depositantes. Se valora por <strong>P/B</strong>, ROE/ROTCE y métricas regulatorias (CET1, Tier 1).</div>
+      <div class="valuation-result">
+        <span class="label-r">Valor por acción</span>
+        <span class="val-r"><span style="color:var(--neutral);font-style:italic">No aplicable a financieras</span></span>
+      </div>
+    </div>`;
+  } else {
   html += `<div class="valuation-card" ${hasNegativeEBITDA ? 'style="opacity:0.5"' : ''}>
     <div class="valuation-card-title">Método de múltiplos · EV/EBITDA ${evSourceBadge}${hasNegativeEBITDA ? '<span style="color:var(--bad);font-size:11px;font-weight:600;margin-left:6px;text-transform:uppercase;letter-spacing:0.08em">No aplicable</span>' : ''}</div>
     <div class="valuation-card-sub">Múltiplo independiente de la estructura de capital. Menos manipulable que el PER (Pablo Fernández).${hasNegativeEBITDA ? ' No se aplica con EBITDA negativo.' : ''}</div>
@@ -7112,12 +7340,19 @@ function renderValuation(years, price, shares, wacc, gTerm, gFCF, perObj, evEbit
       <span class="val-r">${hasNegativeEBITDA ? '<span style="color:var(--na);font-style:italic">No aplicable</span>' : fmtEUR(valor_ev_ebitda)}</span>
     </div>
   </div>`;
+  }
 
   document.getElementById('inv-valuation').innerHTML = html;
 
   // ====== DCF detallado ======
   let dcfHtml = '';
-  if (cf0_eur <= 0) {
+  if (isFinancialFlow) {
+    // DCF no aplicable a entidades financieras (FCF distorsionado por net interest margin)
+    dcfHtml = `<div class="info-box" style="border-left-color:var(--neutral);color:var(--neutral)">
+      <strong>DCF no aplicable a entidades financieras.</strong><br>
+      El cash flow operativo de bancos / aseguradoras está dominado por net interest margin, provisiones y cambios en la cartera de préstamos. El FCF "libre" en sentido industrial no es una métrica significativa. La valoración se basa en <strong>P/B (Price-to-Book)</strong>, ROE/ROTCE y métricas regulatorias (CET1, Tier 1, Leverage Ratio).
+    </div>`;
+  } else if (cf0_eur <= 0) {
     dcfHtml = `<div class="info-box" style="border-left-color:var(--bad);color:var(--bad)">
       <strong>⚠ DCF no aplicable este ejercicio</strong><br>
       El cash flow base (${fcfInfo.label} = ${fmtMilEUR(cf0_eur)}) es ≤ 0. El descuento de flujos solo tiene sentido cuando la empresa genera caja operativa positiva. Considera valoración patrimonial o múltiplos sobre ventas.
@@ -7173,8 +7408,9 @@ function renderValuation(years, price, shares, wacc, gTerm, gFCF, perObj, evEbit
   const valuations = [];
   if (bookValue > 0) valuations.push({ name: 'Patrimonial', value: bookValue });
   if (!hasNegativeBN && valor_per > 0) valuations.push({ name: 'PER',       value: valor_per });
-  if (!hasNegativeEBITDA && valor_ev_ebitda > 0) valuations.push({ name: 'EV/EBITDA', value: valor_ev_ebitda });
-  if (valor_dcf !== null && valor_dcf > 0)        valuations.push({ name: 'DCF',       value: valor_dcf });
+  // En financieras se omiten EV/EBITDA y DCF (no son interpretables · fix post-bloque-1)
+  if (!isFinancialFlow && !hasNegativeEBITDA && valor_ev_ebitda > 0) valuations.push({ name: 'EV/EBITDA', value: valor_ev_ebitda });
+  if (!isFinancialFlow && valor_dcf !== null && valor_dcf > 0)        valuations.push({ name: 'DCF',       value: valor_dcf });
 
   if (valuations.length === 0) {
     document.getElementById('inv-verdict').innerHTML =
@@ -7206,7 +7442,13 @@ function renderValuation(years, price, shares, wacc, gTerm, gFCF, perObj, evEbit
   const priceP = Math.max(0, Math.min(100, ((price - barMin) / (barMax - barMin)) * 100));
   const avgP   = Math.max(0, Math.min(100, ((avg - barMin) / (barMax - barMin)) * 100));
 
-  let html2 = `<div class="verdict-final ${status}">
+  // Banner contextual al inicio del veredicto cuando se han omitido métodos por perfil (fix post-bloque-1)
+  const omittedBanner = isFinancialFlow
+    ? `<div style="background:var(--neutral-bg);border-left:3px solid var(--neutral);color:var(--neutral);padding:10px 14px;margin-bottom:14px;font-size:12px;line-height:1.55;border-radius:var(--r)">
+        <strong>Perfil financiero detectado</strong> · Veredicto basado solo en <strong>Patrimonial (P/B)</strong> y <strong>PER</strong>. EV/EBITDA y DCF se omiten porque no son interpretables en banca/seguros (FCF distorsionado por net interest margin, EBITDA no captura el coste real de los intereses pagados a depositantes). Para una valoración rigurosa de entidades financieras, complementar con ROE/ROTCE, métricas regulatorias (CET1, Tier 1, Leverage Ratio) y P/TBV.
+      </div>`
+    : '';
+  let html2 = `${omittedBanner}<div class="verdict-final ${status}">
     <div class="verdict-label">${label}</div>
     <div class="verdict-detail">${detail}</div>
     <div class="range-bar">

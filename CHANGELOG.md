@@ -180,6 +180,81 @@ Detectadas durante la implementación. No son blockers para producción pero con
 
 ---
 
+## [Bloque 1.1] · Correcciones post-validación · 2026
+
+Tras validación empírica del Bloque 1 con AAPL/ITX.MC/JPM, se detectaron 6 inconsistencias en cómo el `businessProfile.isFinancial` se propagaba (o no) por el resto del informe. Este commit las cierra.
+
+### 1.1.1 · Detección sectorial robusta
+
+**Qué se cambió.**
+- Nueva función `normalizeSector(raw)` que mapea cualquier variante (`"FINANCE"`, `"Finance"`, `"financial services"`, `"BANKS"`, `"Insurance"`) a la clave canónica del map (`"Financial Services"`, `"Technology"`, etc.). Trim + lowercase + regex sobre 11 sectores GICS.
+- Nuevos helpers `isFinancialSector(raw)`, `isUtilitySector(raw)`, `isREITSector(raw, industry)`.
+- `getSectorMultiples(sector)` y `getEVSalesMultiple(sector)` ahora intentan match exacto primero, normalizado después.
+- `mapFMP(info)` extendido: si `industry` no encuentra match exacto, prueba lookup case-insensitive (AV usa MAYÚSCULAS, `"STATE COMMERCIAL BANKS"`); si `fmp_sector` falla exacto, intenta normalizado.
+- `computeNetDebt` y `computeBusinessProfile` reemplazan `/financial/i.test(sector)` por `isFinancialSector(sector)`.
+- `console.info` añadido en `buildDatasetFromAV` con `Sector`, `Industry`, `IpoDate`, `LatestQuarter` para diagnóstico.
+
+**Por qué.** Alpha Vantage para JPM devuelve `Sector` en mayúsculas o singular distinto a FMP, y el map `FMP_SECTOR_TO_DAMODARAN` exigía match exacto literal. Resultado: `mapFMP` devolvía `null`, `detectSector` caía a 'other', `§ I·08` mostraba "—". El `computeBusinessProfile` también fallaba en marcar `isFinancial=true`. Cascada de fallos downstream.
+
+### 1.1.2 · Propagación `isFinancial` al § I·05 (valoración)
+
+**Qué se cambió.**
+- `renderValuation` lee `currentBusinessProfile.isFinancial` en `isFinancialFlow`.
+- Card EV/EBITDA: cuando `isFinancialFlow`, se muestra una variante degradada con título "No aplicable" (badge gris), `valuation-card-sub` explicativo ("EBITDA no captura el margen real de un negocio cuyo coste principal son intereses pagados a depositantes"), y `valor por acción = No aplicable a financieras` en cursiva.
+- Card DCF: cuando `isFinancialFlow`, se sustituye toda la tabla por una caja informativa: "DCF no aplicable a entidades financieras. El cash flow operativo de bancos/aseguradoras está dominado por net interest margin... La valoración se basa en P/B, ROE/ROTCE y métricas regulatorias (CET1, Tier 1, Leverage Ratio)."
+- Array `valuations[]`: cuando `isFinancialFlow`, EV/EBITDA y DCF se omiten del cálculo de la media → veredicto final solo incluye Patrimonial (P/B) y PER.
+- Banner contextual en cabecera del veredicto cuando `isFinancialFlow`: explica qué métodos se han omitido y por qué.
+
+**Impacto en JPM.** Card EV/EBITDA degradada con badge "NO APLICABLE". Card DCF reemplazada por caja informativa. Veredicto final usa solo Patrimonial + PER. Banner gris al inicio del veredicto.
+
+### 1.1.3 · `contextualizeVerdict` extendido en financieras
+
+**Qué se cambió.**
+- `liquidez`, `acid_test`, `tesoreria` + `isFinancial` → ahora se degrada a `neutral` con mensaje específico: "No interpretable en entidades financieras: el pasivo corriente bancario está dominado por depósitos a la vista. Se evalúa por LCR, NSFR y métricas regulatorias." Antes solo se degradaban con `hasLegitimateNegativeWC` (no encajaba para JPM).
+- `gastos_fin_ratio` + `isFinancial` → degrada a `neutral` con mensaje: "En entidades financieras los gastos por intereses son coste operativo (pago a depositantes/bonistas), no carga financiera. Se evalúa por NIM (Net Interest Margin)."
+
+**Impacto.** JPM ya no muestra alertas espurias en liquidez/acid/tesorería/gastos financieros. Aparecen como `Neutro contextual` con explicación profesional. El panel colapsable "Ver evaluación sin contexto sectorial" sigue accesible con la versión bruta.
+
+### 1.1.4 · Red flag deuda LP en financieras + detección de anomalía de clasificación
+
+**Qué se cambió.**
+- `detectRedFlags` regla 6 ("Debt growing fast"): si `isFinancialSector(sector)`, NO se aplica la red flag por crecimiento de PNC (en bancos el PNC es captación de fondos: depósitos a plazo, bonos emitidos, no deuda corporativa adquirida).
+- Nueva detección complementaria: si `pnc` y `pc` se mueven en direcciones opuestas con magnitud > 50% YoY ambos, se marca como "Anomalía de clasificación de balance" (warn). Esto detecta reclasificaciones entre corrientes y no corrientes (típicas cuando AV ajusta vencimientos a 12m o refinanciaciones) sin clasificarlas como red flag de salud financiera.
+
+**Impacto.** JPM ya no muestra el red flag "Deuda a LP crece rápidamente" cada año (era un falso positivo crónico). Si hay una reclasificación PNC↔PC en AV se reporta como anomalía de clasificación, no como deterioro.
+
+### 1.1.5 · Fecha de constitución (fix 6a anticipado)
+
+**Qué se cambió.**
+- `buildDatasetFromAV` ahora mapea `companyInfo.constitution` desde `overview.IpoDate` (o `IPODate`), no desde `overview.LatestQuarter` (que era la fecha de cierre del último trimestre fiscal, p.ej. `2026-03-31` para AAPL).
+- `renderCompanyCard` añade un guard: si `constitution.slice(0,4) > min(yearsData.year)`, suprime el campo. Garantía contra fechas absurdas.
+
+**Impacto.** AAPL muestra "Constituida 1980-12-12" (IPO), no "2026-03-31". Si IPO no está disponible se omite el campo.
+
+### 1.1.6 · Validación de integridad de datos AV/SABI
+
+**Qué se cambió.**
+- Nueva función `validateDataIntegrity(years)` que detecta:
+  - Magnitudes no negativas que vienen negativas (existencias, ventas, activo, AC, inmovilizado, PC, PNC, deudores, acreedores, deudas_fin).
+  - Activo total ≠ Inmovilizado + AC con tolerancia 10% (treasury stock, participaciones no consolidadas suelen quedar dentro del 10%).
+  - Cambios YoY > 500% en partidas estructurales (activo, PN, ventas, inmovilizado).
+  - Campos críticos null/undefined (activo, PN, ventas, BN).
+- `renderInvestment` muestra un banner amber al inicio (antes de la sección de calidad) si la lista no está vacía: lista hasta 6 issues + "... y N más" si supera. Mensaje recomienda cross-validar con el 10-K.
+
+**Impacto.** Si AV devuelve un PNC que salta de 100M a 600M YoY de forma aislada, aparece el aviso. Si todos los datos son razonables, el banner no se muestra.
+
+---
+
+### Limitaciones conocidas tras 1.1
+
+7. **`isFinancialSector` puede no detectar variantes muy exóticas.** Cubrimos `financ|bank|insur|capital markets|asset manag|broker|exchange`. Si AV inventa nuevos términos (`"Specialty Lending"`, `"Fintech Services"`), pueden no matchear. Mitigación: amplía el regex en `normalizeSector` si aparece un caso.
+
+8. **El banner de "Anomalía de clasificación de balance" solo dispara cuando PNC y PC se mueven en direcciones OPUESTAS.** Si AV reclasifica con ambos creciendo o ambos cayendo (raro), no se detecta. Es defensivo, no exhaustivo.
+
+9. **`validateDataIntegrity` tolerancia 10% del balance.** Apple con buybacks agresivos da diff ~6-7%. JPM tiene estructura distinta y posiblemente diff > 10% por treasury stock + AOCI; verificar empíricamente que no dispare false positives.
+
+---
+
 ## [Bloque 2] · Mejoras de precisión
 
 Pendiente. Cubrirá: ROIC + buyback disclaimer, DCF multifase 5+5+perpetuidad, WACC dinámico CAPM, Yields (FCF/Earnings/Shareholder), detección deudores anómalos, bug DCF inverso, EV/Sales como método principal en pérdidas.
