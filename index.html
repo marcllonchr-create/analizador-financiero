@@ -5784,17 +5784,25 @@ async function avFetch(fn, ticker) {
   const info = (data['Information'] || data['Note'] || '').toString();
   if (info) {
     console.warn('AV Information/Note:', info);
-    // Distinguir rate-limit diario vs por minuto vs tier insuficiente
+    // ORDEN IMPORTANTE: detectar rate-limit ANTES que "premium". AV menciona
+    // "premium plans" en casi todos sus mensajes de cuota (como upgrade path),
+    // pero el problema real es el rate-limit. Solo es AV_TIER cuando NO hay
+    // referencia explícita a límites por segundo/minuto/día.
+    if (/per\s*second|requests?\s+more\s+spar|1\s*request/i.test(info)) throw new Error('AV_RATE_BURST');
+    if (/per\s*day|daily|25\s*requests/i.test(info)) throw new Error('AV_RATE_LIMIT_DAILY');
+    if (/per\s*minute|5\s*calls/i.test(info)) throw new Error('AV_RATE_LIMIT');
+    if (/\bdemo\b|demo api key/i.test(info)) throw new Error('AV_KEY_INVALID');
     if (/premium|paid plan|subscri/i.test(info)) throw new Error('AV_TIER');
-    if (/(per\s*day|daily|25\s*requests)/i.test(info)) throw new Error('AV_RATE_LIMIT_DAILY');
-    if (/(per\s*minute|minute|5\s*calls)/i.test(info)) throw new Error('AV_RATE_LIMIT');
-    if (/api key|demo/i.test(info)) throw new Error('AV_KEY_INVALID');
     // Caso desconocido: propaga el texto al toast para diagnóstico
     throw new Error('AV_INFO:' + info.slice(0, 140));
   }
   if (data['Error Message']) throw new Error('TICKER_NOT_FOUND');
   return data;
 }
+
+// Pequeña pausa entre llamadas AV consecutivas para respetar el burst limit
+// de 1 request/segundo del plan free.
+function avSleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
 // Alpha Vantage devuelve todos los números como STRINGS ("391035000000") o "None".
 // Helper que parsea a número o devuelve 0.
@@ -5819,15 +5827,19 @@ async function loadFromAV() {
   if (loadingDiv) loadingDiv.style.display = 'block';
   if (loadingMsg) loadingMsg.textContent = `Descargando ${ticker} (4 endpoints)...`;
   try {
-    // 4 endpoints en serie con pequeño retraso entre llamadas para no disparar
-    // el rate-limit de Alpha Vantage (5 req/min en el plan free).
+    // 4 endpoints en serie con pausa 1.2 s entre llamadas para respetar
+    // el burst limit de Alpha Vantage (1 request/segundo en plan free).
+    // Tiempo total ~5 s con red OK, lo que es aceptable.
     if (loadingMsg) loadingMsg.textContent = `${ticker} · perfil (1/4)...`;
     const overview = await avFetch('OVERVIEW', ticker);
     if (!overview.Symbol) throw new Error('TICKER_NOT_FOUND');
+    await avSleep(1200);
     if (loadingMsg) loadingMsg.textContent = `${ticker} · balance (2/4)...`;
     const balance = await avFetch('BALANCE_SHEET', ticker);
+    await avSleep(1200);
     if (loadingMsg) loadingMsg.textContent = `${ticker} · resultados (3/4)...`;
     const income = await avFetch('INCOME_STATEMENT', ticker);
+    await avSleep(1200);
     if (loadingMsg) loadingMsg.textContent = `${ticker} · cash flow (4/4)...`;
     const cashflow = await avFetch('CASH_FLOW', ticker);
 
@@ -5846,9 +5858,12 @@ async function loadFromAV() {
     if (loadingDiv) loadingDiv.style.display = 'none';
   } catch (e) {
     console.error('Alpha Vantage error:', e);
-    // Fallback opcional a FMP si el usuario tiene API key (solo plan Starter+ funcional)
-    if (localStorage.getItem('fmp_api_key') && e.message !== 'NO_FINANCIAL_DATA' && e.message !== 'TICKER_NOT_FOUND') {
-      if (loadingMsg) loadingMsg.textContent = `Alpha Vantage falló; reintentando con FMP...`;
+    // Fallback a FMP SOLO en errores técnicos genuinos donde FMP podría ayudar
+    // (timeout o error HTTP 5xx). En errores de cuenta/cuota/tier de AV, FMP
+    // solo va a devolver 402 (plan Basic gratuito) y enmascarar el problema real.
+    const fmpCouldHelp = e.message === 'AV_TIMEOUT' || /^AV_HTTP_5/.test(e.message);
+    if (fmpCouldHelp && localStorage.getItem('fmp_api_key')) {
+      if (loadingMsg) loadingMsg.textContent = `Alpha Vantage falló (técnico); reintentando con FMP...`;
       try {
         return await loadFromFMP();
       } catch (e2) {
@@ -5861,6 +5876,7 @@ async function loadFromAV() {
     else if (e.message === 'TICKER_NOT_FOUND') msg = `Ticker "${ticker}" no encontrado en Alpha Vantage. Para mercados europeos usa sufijos como .LON, .FRK, .PAR (no los de Yahoo).`;
     else if (e.message === 'NO_FINANCIAL_DATA') msg = `Alpha Vantage no devuelve estados financieros para "${ticker}". Si este es un ticker conocido (AAPL/MSFT/etc.), normalmente significa que se han agotado las requests del día — revisa F12 → Console para más detalle.`;
     else if (e.message === 'AV_TIER') msg = 'Alpha Vantage indica que el endpoint requiere plan premium. Es inusual para los 4 endpoints estándar (OVERVIEW/BS/IS/CF); revisa el detalle en F12 → Console.';
+    else if (e.message === 'AV_RATE_BURST') msg = 'Alpha Vantage exige 1 request/segundo. Espera 5 s y reintenta — el código ya espacia las llamadas, este error solo aparece si hiciste varios análisis seguidos.';
     else if (e.message === 'AV_RATE_LIMIT') msg = 'Rate limit por minuto alcanzado (5 req/min). Espera 60 segundos y reintenta.';
     else if (e.message === 'AV_RATE_LIMIT_DAILY') msg = 'Cuota diaria de Alpha Vantage agotada (25 req/día en plan free). Reintenta mañana o pasa a SABI en la pestaña 02.';
     else if (e.message === 'AV_TIMEOUT') msg = 'Tiempo de espera agotado (>10s). Verifica conexión y reintenta.';
