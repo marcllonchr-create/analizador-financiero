@@ -34,6 +34,8 @@
     --bad-bg: #FFF1F2;        /* Rose-50 */
     --na: #94A3B8;            /* Slate-400 */
     --na-bg: #F1F5F9;
+    --neutral: #475569;       /* Slate-600 · NEUTRO CONTEXTUAL (alerta desactivada por co-confirmación) */
+    --neutral-bg: #F8FAFC;    /* Slate-50 */
     /* Aliases retrocompatibles · evitan tocar ~80 referencias internas a --good / --good-bg */
     --good: var(--positive);
     --good-bg: var(--positive-bg);
@@ -409,6 +411,7 @@
   .verdict.warn { background: var(--warn-bg); color: var(--warn); }
   .verdict.bad { background: var(--bad-bg); color: var(--bad); }
   .verdict.na { background: var(--na-bg); color: var(--na); }
+  .verdict.neutral { background: var(--neutral-bg); color: var(--neutral); border: 1px dashed var(--line-strong); }
   .verdict-text {
     font-size: 13px;
     color: var(--ink-soft);
@@ -2213,16 +2216,16 @@
         </div>
         <div class="input-cell">
           <label>PER objetivo del sector</label>
-          <input type="number" id="inp-per" step="0.5" value="15" oninput="debouncedRenderInvestment()">
-          <div class="input-hint">Retail: 12-18 · Tech: 25-40 · Utilities: 10-14</div>
+          <input type="number" id="inp-per" step="0.5" value="15" data-source="default" oninput="this.dataset.source='manual';debouncedRenderInvestment()">
+          <div class="input-hint" id="hint-per">Se auto-rellena al cargar por ticker</div>
         </div>
         <div class="input-cell">
           <label>EV/EBITDA objetivo</label>
-          <input type="number" id="inp-ev-ebitda" step="0.5" value="9" oninput="debouncedRenderInvestment()">
-          <div class="input-hint">Retail: 7-10 · Industrial: 6-9 · Tech: 12-18</div>
+          <input type="number" id="inp-ev-ebitda" step="0.5" value="9" data-source="default" oninput="this.dataset.source='manual';debouncedRenderInvestment()">
+          <div class="input-hint" id="hint-ev-ebitda">Se auto-rellena al cargar por ticker</div>
         </div>
         <div class="input-cell">
-          <label>Deuda neta manual (M €) <span style="color:var(--ink-mute);font-weight:400">— opcional</span></label>
+          <label>Deuda neta manual (M <span id="lbl-debt-ccy">€</span>) <span style="color:var(--ink-mute);font-weight:400">— opcional</span></label>
           <input type="number" id="inp-net-debt" step="100" placeholder="auto" oninput="debouncedRenderInvestment()">
           <div class="input-hint">Si tienes el dato real del informe anual; sobrescribe el cálculo del SABI</div>
         </div>
@@ -2435,6 +2438,95 @@ const SECTOR_BENCHMARKS = {
   advertising:     { name: 'Publicidad · marketing',                per: 14.0, ev_ebitda: 8.5,  roe: 16.0, op_margin: 12.0, debt_to_equity: 0.55, beta: 1.05 },
   other:           { name: 'Otro · sin clasificar (medianas EU)',   per: 16.0, ev_ebitda: 10.0, roe: 12.0, op_margin: 10.0, debt_to_equity: 0.65, beta: 1.00 },
 };
+
+// =======================================================
+// SECTOR_MULTIPLES (fix 1.1)
+// Múltiplos objetivo razonables por sector GICS (medianas globales 2026).
+// Mantenemos por separado de SECTOR_BENCHMARKS (Damodaran EU) porque las dos
+// tablas tienen propósitos distintos: ésta alimenta los inputs § I·00 (cálculo
+// de PER/EV-EBITDA/PB objetivos para valoración); SECTOR_BENCHMARKS alimenta
+// la comparativa § I·08 con mediana sectorial Damodaran EU. Los valores pueden
+// diferir legítimamente (mediana global vs EU).
+// =======================================================
+const SECTOR_MULTIPLES = {
+  "Technology":              { per: 28, evEbitda: 16, pb: null,  label: "Tech (mediana global)" },
+  "Communication Services":  { per: 22, evEbitda: 13, pb: null,  label: "Communications" },
+  "Consumer Discretionary":  { per: 20, evEbitda: 12, pb: null,  label: "Consumer Disc." },
+  "Consumer Cyclical":       { per: 18, evEbitda: 11, pb: null,  label: "Consumer Cyclical" },
+  "Consumer Defensive":      { per: 19, evEbitda: 12, pb: null,  label: "Consumer Staples" },
+  "Consumer Staples":        { per: 19, evEbitda: 12, pb: null,  label: "Consumer Staples" },
+  "Healthcare":              { per: 22, evEbitda: 14, pb: null,  label: "Healthcare" },
+  "Financials":              { per: 12, evEbitda: null, pb: 1.3, label: "Financials (usar P/B)" },
+  "Financial Services":      { per: 12, evEbitda: null, pb: 1.3, label: "Financials (usar P/B)" },
+  "Industrials":             { per: 17, evEbitda: 10, pb: null,  label: "Industrials" },
+  "Energy":                  { per: 12, evEbitda: 6,  pb: null,  label: "Energy" },
+  "Materials":               { per: 14, evEbitda: 8,  pb: null,  label: "Materials" },
+  "Basic Materials":         { per: 14, evEbitda: 8,  pb: null,  label: "Materials" },
+  "Real Estate":             { per: 18, evEbitda: 16, pb: 1.5,   label: "REITs (preferir P/FFO si disponible)" },
+  "Utilities":               { per: 14, evEbitda: 11, pb: null,  label: "Utilities" },
+  "_default":                { per: 16, evEbitda: 10, pb: null,  label: "Mediana mercado" }
+};
+
+// EV/Sales objetivo por sector (fix 2.7 anticipo · usado cuando PER/EV-EBITDA no aplican)
+const EV_SALES_MULTIPLES = {
+  "Technology":              { value: 5.0, label: "Tech" },
+  "Communication Services":  { value: 3.5, label: "Communications" },
+  "Consumer Discretionary":  { value: 1.5, label: "Consumer Disc." },
+  "Consumer Cyclical":       { value: 1.3, label: "Consumer Cyclical" },
+  "Consumer Defensive":      { value: 1.8, label: "Consumer Staples" },
+  "Consumer Staples":        { value: 1.8, label: "Consumer Staples" },
+  "Healthcare":              { value: 3.5, label: "Healthcare" },
+  "Financials":              { value: 3.0, label: "Financials" },
+  "Financial Services":      { value: 3.0, label: "Financials" },
+  "Industrials":             { value: 1.5, label: "Industrials" },
+  "Energy":                  { value: 1.0, label: "Energy" },
+  "Materials":               { value: 1.2, label: "Materials" },
+  "Basic Materials":         { value: 1.2, label: "Materials" },
+  "Real Estate":             { value: 5.0, label: "Real Estate" },
+  "Utilities":               { value: 2.5, label: "Utilities" },
+  "_default":                { value: 1.5, label: "Mediana mercado" }
+};
+
+function getSectorMultiples(sector) {
+  if (!sector) return SECTOR_MULTIPLES._default;
+  return SECTOR_MULTIPLES[sector] || SECTOR_MULTIPLES._default;
+}
+function getEVSalesMultiple(sector) {
+  if (!sector) return EV_SALES_MULTIPLES._default;
+  return EV_SALES_MULTIPLES[sector] || EV_SALES_MULTIPLES._default;
+}
+
+// Auto-rellenar inputs PER/EV-EBITDA con múltiplos del sector detectado.
+// Marca data-source='auto' para que renderValuation muestre el badge "auto-detectado".
+// NO sobreescribe si el usuario ya editó (data-source='manual').
+function applySectorAutoFill() {
+  const sector = (companyInfo && companyInfo.fmp_sector) || '';
+  if (!sector) return; // SABI / sin sector → mantener valores actuales (manuales o default)
+  const m = getSectorMultiples(sector);
+  const inpPer = document.getElementById('inp-per');
+  const inpEv = document.getElementById('inp-ev-ebitda');
+  if (inpPer && inpPer.dataset.source !== 'manual' && m.per !== null) {
+    inpPer.value = m.per;
+    inpPer.dataset.source = 'auto';
+    inpPer.dataset.sectorLabel = m.label;
+  }
+  if (inpEv && inpEv.dataset.source !== 'manual') {
+    if (m.evEbitda !== null) {
+      inpEv.value = m.evEbitda;
+      inpEv.dataset.source = 'auto';
+      inpEv.dataset.sectorLabel = m.label;
+    } else {
+      // Financieras: omitir EV/EBITDA
+      inpEv.dataset.source = 'omitted';
+      inpEv.dataset.sectorLabel = m.label;
+    }
+  }
+  // Actualizar hints visibles
+  const hintPer = document.getElementById('hint-per');
+  const hintEv = document.getElementById('hint-ev-ebitda');
+  if (hintPer) hintPer.textContent = inpPer.dataset.source === 'manual' ? 'Override manual activo' : `Auto: ${m.label}`;
+  if (hintEv) hintEv.textContent = m.evEbitda === null ? `${m.label} · no aplicable` : (inpEv.dataset.source === 'manual' ? 'Override manual activo' : `Auto: ${m.label}`);
+}
 
 // =======================================================
 // CNAE 2009 → Damodaran sector key
@@ -2853,6 +2945,7 @@ function processFile(file) {
       parseUnits();
       extractAllData();
       ratiosCache = null;     // invalidate memo on new file
+      currentBusinessProfile = null;
       renderCompanyCard();
       renderAnalysis();
     } catch (err) {
@@ -2936,6 +3029,7 @@ function setCurrentBlock(idx) {
   parseUnits();
   extractAllData();
   ratiosCache = null;
+  currentBusinessProfile = null;
   renderCompanyCard();
   renderAnalysis();
   if (document.getElementById('tab-investment').classList.contains('active')) {
@@ -3525,6 +3619,9 @@ function renderCompanyCard() {
     sel.appendChild(opt);
   }
   document.getElementById('year-count').textContent = `${yearsData.length} ejercicios · valores en ${unitInfo.long}`;
+  // Actualizar etiqueta de moneda en el input de deuda neta manual
+  const lblDebtCcy = document.getElementById('lbl-debt-ccy');
+  if (lblDebtCcy) lblDebtCcy.textContent = currencySymbol();
 }
 
 function renderAnalysis() {
@@ -3532,14 +3629,22 @@ function renderAnalysis() {
   if (!yearLabel) return;
   const d = extractedData[yearLabel];
   if (!d) return;
-  
+
   // Show sections
   document.getElementById('summary-section').classList.add('visible');
   document.getElementById('base-section').classList.add('visible');
   document.getElementById('econ-section').classList.add('visible');
   document.getElementById('fin-section').classList.add('visible');
   document.getElementById('multiyear-section').classList.add('visible');
-  
+
+  // Asegurar que businessProfile está calculado antes de los renders contextualizados.
+  // Sin esto, si el usuario carga empresa y se queda en pestaña 02, los ratios de
+  // liquidez/endeudamiento aparecerían sin salvaguardas (en lugar de Neutro Contextual).
+  if (!currentBusinessProfile && yearsData.length > 0) {
+    const sortedY = [...yearsData].sort((a, b) => a.year - b.year).slice(-5);
+    currentBusinessProfile = computeBusinessProfile(sortedY);
+  }
+
   renderBaseData(d);
   const ratios = computeRatios(d);
   renderEconRatios(d, ratios);
@@ -3582,6 +3687,15 @@ function renderBaseData(d) {
   document.getElementById('base-data').innerHTML = html;
 }
 
+function verdictLabel(status) {
+  switch (status) {
+    case 'good':    return 'OK';
+    case 'warn':    return 'Atención';
+    case 'bad':     return 'Alerta';
+    case 'neutral': return 'Neutro contextual';
+    default:        return 'N/D';
+  }
+}
 function row(name, formula, value, verdict) {
   return `<tr>
     <td>
@@ -3590,7 +3704,7 @@ function row(name, formula, value, verdict) {
     </td>
     <td class="ratio-value">${value}</td>
     <td>
-      ${verdict ? `<span class="verdict ${verdict.status}">${verdict.status === 'good' ? 'OK' : verdict.status === 'warn' ? 'Atención' : verdict.status === 'bad' ? 'Alerta' : 'N/D'}</span><div class="verdict-text">${verdict.text}</div>` : ''}
+      ${verdict ? `<span class="verdict ${verdict.status}">${verdictLabel(verdict.status)}</span><div class="verdict-text">${verdict.text}</div>` : ''}
     </td>
   </tr>`;
 }
@@ -3665,7 +3779,16 @@ function renderEconRatios(d, r) {
 
 function renderFinRatios(d, r) {
   let html = '';
-  
+  const profile = currentBusinessProfile;
+  // Acumulamos las versiones brutas para el panel colapsable de auditoría
+  const rawVerdicts = [];
+  const ctxRow = (name, formula, val, rawVerdict, kind) => {
+    const ctx = contextualizeVerdict(rawVerdict, kind, profile);
+    // Si el contexto cambia el verdict, guardar la versión bruta
+    if (ctx !== rawVerdict && rawVerdict) rawVerdicts.push({ name, formula, val, raw: rawVerdict });
+    return row(name, formula, val, ctx);
+  };
+
   // GROUP 1: Liquidez
   html += `<div class="ratio-group">
     <div class="ratio-group-title">A · Solvencia y liquidez</div>
@@ -3675,16 +3798,16 @@ function renderFinRatios(d, r) {
         <th class="num col-value">Valor</th>
         <th class="col-verdict">Veredicto</th>
       </tr></thead><tbody>`;
-  html += row('Ratio de solvencia', 'Activo / (PNC + PC)',
-              fmtNum(r.solvencia, 3), v_solvencia(r.solvencia));
-  html += row('Ratio de liquidez', 'AC / PC',
-              fmtNum(r.liquidez, 3), v_liquidez(r.liquidez));
-  html += row('Acid test (test ácido)', '(AC − Existencias) / PC',
-              fmtNum(r.acid_test, 3), v_acid_test(r.acid_test));
-  html += row('Ratio de tesorería', 'Disponible / PC',
-              fmtNum(r.ratio_tesoreria, 3), v_tesoreria(r.ratio_tesoreria));
+  html += ctxRow('Ratio de solvencia', 'Activo / (PNC + PC)',
+              fmtNum(r.solvencia, 3), v_solvencia(r.solvencia), 'solvencia');
+  html += ctxRow('Ratio de liquidez', 'AC / PC',
+              fmtNum(r.liquidez, 3), v_liquidez(r.liquidez), 'liquidez');
+  html += ctxRow('Acid test (test ácido)', '(AC − Existencias) / PC',
+              fmtNum(r.acid_test, 3), v_acid_test(r.acid_test), 'acid_test');
+  html += ctxRow('Ratio de tesorería', 'Disponible / PC',
+              fmtNum(r.ratio_tesoreria, 3), v_tesoreria(r.ratio_tesoreria), 'tesoreria');
   html += `</tbody></table></div>`;
-  
+
   // GROUP 2: Endeudamiento
   html += `<div class="ratio-group">
     <div class="ratio-group-title">B · Endeudamiento y estructura financiera</div>
@@ -3694,53 +3817,81 @@ function renderFinRatios(d, r) {
         <th class="num col-value">Valor</th>
         <th class="col-verdict">Veredicto</th>
       </tr></thead><tbody>`;
-  html += row('Ratio de endeudamiento', '(PNC + PC) / (PN + Pasivo)',
-              fmtNum(r.endeudamiento, 3), v_endeudamiento(r.endeudamiento));
-  html += row('Ratio de calidad de la deuda', 'PC / (PNC + PC)',
-              fmtNum(r.calidad_deuda, 3), v_calidad_deuda(r.calidad_deuda));
-  html += row('Capacidad de devolución de préstamos', '(BN + Amortizaciones) / Préstamos recibidos',
-              fmtNum(r.cap_devol_prest, 3), v_cap_devol_prest(r.cap_devol_prest));
-  html += row('Recursos propios a exigible a largo plazo', 'PN / PNC',
-              fmtNum(r.rec_propios_lp, 3), v_rec_propios_lp(r.rec_propios_lp));
-  html += row('Ratio de exigible a patrimonio', '(PNC + PC) / PN',
-              fmtNum(r.exigible_patrim, 3), v_exigible_patrim(r.exigible_patrim));
-  html += row('Apalancamiento financiero', '(BAI / BAII) × (Activo / PN)',
-              fmtNum(r.apalancamiento, 3), v_apalancamiento(r.apalancamiento));
-  html += row('Ratio de gastos financieros', 'Gastos financieros / Ventas',
-              fmtNum(r.gastos_fin_ratio, 4), v_gastos_fin_ratio(r.gastos_fin_ratio));
+  html += ctxRow('Ratio de endeudamiento', '(PNC + PC) / (PN + Pasivo)',
+              fmtNum(r.endeudamiento, 3), v_endeudamiento(r.endeudamiento), 'endeudamiento');
+  html += ctxRow('Ratio de calidad de la deuda', 'PC / (PNC + PC)',
+              fmtNum(r.calidad_deuda, 3), v_calidad_deuda(r.calidad_deuda), 'calidad_deuda');
+  html += ctxRow('Capacidad de devolución de préstamos', '(BN + Amortizaciones) / Préstamos recibidos',
+              fmtNum(r.cap_devol_prest, 3), v_cap_devol_prest(r.cap_devol_prest), 'cap_devol_prest');
+  html += ctxRow('Recursos propios a exigible a largo plazo', 'PN / PNC',
+              fmtNum(r.rec_propios_lp, 3), v_rec_propios_lp(r.rec_propios_lp), 'rec_propios_lp');
+  html += ctxRow('Ratio de exigible a patrimonio', '(PNC + PC) / PN',
+              fmtNum(r.exigible_patrim, 3), v_exigible_patrim(r.exigible_patrim), 'exigible_patrim');
+  html += ctxRow('Apalancamiento financiero', '(BAI / BAII) × (Activo / PN)',
+              fmtNum(r.apalancamiento, 3), v_apalancamiento(r.apalancamiento), 'apalancamiento');
+  html += ctxRow('Ratio de gastos financieros', 'Gastos financieros / Ventas',
+              fmtNum(r.gastos_fin_ratio, 4), v_gastos_fin_ratio(r.gastos_fin_ratio), 'gastos_fin_ratio');
   html += `</tbody></table></div>`;
+
+  // Panel colapsable · alertas brutas sin contexto sectorial (fix 1.5)
+  if (rawVerdicts.length > 0) {
+    html += `<details class="rob-card" style="margin-top:14px;padding:12px 16px;cursor:pointer">
+      <summary style="font-family:var(--sans);font-size:13px;font-weight:600;color:var(--neutral);cursor:pointer;list-style:none">
+        Ver evaluación sin contexto sectorial (${rawVerdicts.length} ${rawVerdicts.length === 1 ? 'ratio' : 'ratios'} contextualizado${rawVerdicts.length === 1 ? '' : 's'})
+        <span style="font-weight:400;color:var(--ink-mute);font-size:11px;margin-left:8px">click para abrir</span>
+      </summary>
+      <div style="margin-top:10px;font-size:11px;color:var(--ink-mute);line-height:1.5">Auditoría · estos ratios se han marcado como <strong>Neutro contextual</strong> por co-confirmación con el perfil de empresa. La evaluación bruta (sin salvaguardas) se muestra a continuación.</div>
+      <table class="ratios" style="margin-top:10px"><tbody>`;
+    for (const rv of rawVerdicts) {
+      html += `<tr>
+        <td><div class="ratio-name">${esc(rv.name)}</div><div class="ratio-formula col-formula-hide">${esc(rv.formula)}</div></td>
+        <td class="ratio-value">${rv.val}</td>
+        <td><span class="verdict ${rv.raw.status}">${verdictLabel(rv.raw.status)}</span><div class="verdict-text">${rv.raw.text || ''}</div></td>
+      </tr>`;
+    }
+    html += `</tbody></table></details>`;
+  }
   
   document.getElementById('fin-ratios').innerHTML = html;
 }
 
 function renderSummary(r, d) {
-  const verdicts = [
-    v_rent_financiera(r.rent_financiera),
-    v_rent_economica(r.rent_economica),
-    v_roi(r.roi),
-    v_margen_bruto(r.margen_bruto),
-    v_rend_economico(r.rend_economico),
-    v_rotacion_activo(r.rotacion_activo),
-    v_periodo_mercaderias(r.periodo_mercaderias),
-    v_periodo_pago(r.periodo_pago, r.periodo_cobro),
-    v_periodo_cobro(r.periodo_cobro, r.periodo_pago),
-    v_solvencia(r.solvencia),
-    v_liquidez(r.liquidez),
-    v_acid_test(r.acid_test),
-    v_tesoreria(r.ratio_tesoreria),
-    v_endeudamiento(r.endeudamiento),
-    v_calidad_deuda(r.calidad_deuda),
-    v_rec_propios_lp(r.rec_propios_lp),
-    v_exigible_patrim(r.exigible_patrim),
-    v_apalancamiento(r.apalancamiento),
-    v_gastos_fin_ratio(r.gastos_fin_ratio),
+  const profile = currentBusinessProfile;
+  // Verdicts contextualizados (los ratios con salvaguarda quedan en 'neutral')
+  const raw = [
+    { v: v_rent_financiera(r.rent_financiera), kind: 'rentabilidad' },
+    { v: v_rent_economica(r.rent_economica),   kind: 'rentabilidad' },
+    { v: v_roi(r.roi),                          kind: 'rentabilidad' },
+    { v: v_margen_bruto(r.margen_bruto),        kind: 'rentabilidad' },
+    { v: v_rend_economico(r.rend_economico),    kind: 'rentabilidad' },
+    { v: v_rotacion_activo(r.rotacion_activo),  kind: 'rotacion' },
+    { v: v_periodo_mercaderias(r.periodo_mercaderias), kind: 'rotacion' },
+    { v: v_periodo_pago(r.periodo_pago, r.periodo_cobro), kind: 'rotacion' },
+    { v: v_periodo_cobro(r.periodo_cobro, r.periodo_pago), kind: 'rotacion' },
+    { v: v_solvencia(r.solvencia),              kind: 'solvencia' },
+    { v: v_liquidez(r.liquidez),                kind: 'liquidez' },
+    { v: v_acid_test(r.acid_test),              kind: 'acid_test' },
+    { v: v_tesoreria(r.ratio_tesoreria),        kind: 'tesoreria' },
+    { v: v_endeudamiento(r.endeudamiento),      kind: 'endeudamiento' },
+    { v: v_calidad_deuda(r.calidad_deuda),      kind: 'calidad_deuda' },
+    { v: v_rec_propios_lp(r.rec_propios_lp),    kind: 'rec_propios_lp' },
+    { v: v_exigible_patrim(r.exigible_patrim),  kind: 'exigible_patrim' },
+    { v: v_apalancamiento(r.apalancamiento),    kind: 'apalancamiento' },
+    { v: v_gastos_fin_ratio(r.gastos_fin_ratio), kind: 'gastos_fin_ratio' },
   ];
-  const counts = { good: 0, warn: 0, bad: 0, na: 0 };
-  for (const v of verdicts) counts[v.status]++;
+  const counts = { good: 0, warn: 0, bad: 0, na: 0, neutral: 0 };
+  for (const { v, kind } of raw) {
+    const ctx = contextualizeVerdict(v, kind, profile) || v;
+    counts[ctx.status] = (counts[ctx.status] || 0) + 1;
+  }
+  const neutralTile = counts.neutral > 0
+    ? `<div class="item"><div class="num" style="color:var(--neutral)">${counts.neutral}</div><div class="lab">Neutro ctx.</div></div>`
+    : '';
   document.getElementById('summary-bar').innerHTML = `
     <div class="item"><div class="num good">${counts.good}</div><div class="lab">Correctos</div></div>
     <div class="item"><div class="num warn">${counts.warn}</div><div class="lab">Atención</div></div>
     <div class="item"><div class="num bad">${counts.bad}</div><div class="lab">Alertas</div></div>
+    ${neutralTile}
     <div class="item"><div class="num na">${counts.na}</div><div class="lab">N/D</div></div>
   `;
 }
@@ -4094,6 +4245,9 @@ function renderInvestment() {
     debtInput.placeholder = 'auto (deja vacío si confías en SABI)';
   }
 
+  // Calcular business profile ANTES de cualquier render que dependa de él (fix 1.5)
+  currentBusinessProfile = computeBusinessProfile(yearsUse);
+
   renderMasas(yearsUse);
   renderCrecimiento(yearsUse);
   renderCapital(yearsUse);
@@ -4139,11 +4293,12 @@ function computePiotroski(d, prev) {
     value: roa !== null ? (roa * 100).toFixed(2) + '%' : 'n.d.',
   });
 
-  // 2. CFO positivo (proxy: BN + Amortizaciones > 0)
-  const cfo = (d.bn || 0) + (d.amortizaciones || 0);
+  // 2. CFO positivo · usa OCF real si está disponible, fallback BN + Amortizaciones
+  const fcfInfo = computeFCF(d);
+  const cfo = fcfInfo.method === 'real' ? d.ocf : (d.bn || 0) + (d.amortizaciones || 0);
   tests.push({
     name: 'Cash flow operativo positivo',
-    desc: '(BN + amortizaciones) > 0',
+    desc: fcfInfo.method === 'real' ? 'OCF (cashflow statement) > 0' : '(BN + amortizaciones) > 0',
     pass: cfo > 0,
     value: fmtMil(cfo) + ' ' + unitInfo.label,
   });
@@ -4322,13 +4477,14 @@ function detectRedFlags(d, prev) {
     }
   }
 
-  // 5. Earnings quality: CFO vs BN gap
-  const cfo = (d.bn || 0) + (d.amortizaciones || 0);
-  if (d.bn && d.bn > 0 && cfo < d.bn * 0.7) {
+  // 5. Earnings quality: CFO vs BN gap · solo evaluable con OCF real
+  // (la aproximación BN+amort siempre supera al BN, haciendo el test inservible).
+  const fcfInfoQ = computeFCF(d);
+  if (fcfInfoQ.method === 'real' && d.bn && d.bn > 0 && d.ocf < d.bn * 0.7) {
     flags.push({
       severity: 'bad',
       title: 'Calidad de beneficios baja',
-      detail: `Cash flow operativo (${fmtMil(cfo)}) muy por debajo del BN (${fmtMil(d.bn)}). Los beneficios podrían estar inflados por acruales contables.`
+      detail: `OCF reportado (${fmtMil(d.ocf)} ${unitInfo.label}) muy por debajo del BN (${fmtMil(d.bn)} ${unitInfo.label}). Los beneficios podrían estar inflados por acruales contables (working capital, deferred revenue, etc.).`
     });
   }
 
@@ -4417,7 +4573,7 @@ function renderQuality(years) {
   const prev = extractedData[years[years.length - 2].label];
 
   const piotroski = computePiotroski(last, prev);
-  
+
   // For Altman, use marketCap if available
   const price = parseFloat(document.getElementById('inp-price').value);
   const shares = parseFloat(document.getElementById('inp-shares').value);
@@ -4426,7 +4582,29 @@ function renderQuality(years) {
 
   const flags = detectRedFlags(last, prev);
 
-  let html = '<div class="score-row">';
+  let html = '';
+
+  // Warning de distress al inicio si aplica (fix 1.5)
+  if (currentBusinessProfile && currentBusinessProfile.isInDistress) {
+    html += `<div class="info-box" style="border-left-color:var(--bad);color:var(--bad);margin-bottom:14px">
+      <strong>⚠ Señales de distress financiero:</strong> Piotroski F-Score ${currentBusinessProfile.piotroskiScore}/8 y Altman Z' ${currentBusinessProfile.altmanZ !== null ? currentBusinessProfile.altmanZ.toFixed(2) : 'n.d.'}.
+      Las alertas de liquidez/endeudamiento <strong>no se contextualizan</strong> en este análisis: se muestran en su severidad original.
+      Reforzar análisis cualitativo y revisar continuidad operativa antes de cualquier decisión.
+    </div>`;
+  }
+  // Contextualización informativa cuando hay salvaguardas activas
+  else if (currentBusinessProfile && (currentBusinessProfile.hasLegitimateNegativeWC || currentBusinessProfile.hasStrategicDebt || currentBusinessProfile.isUtility || currentBusinessProfile.isFinancial)) {
+    const reasons = [];
+    if (currentBusinessProfile.hasLegitimateNegativeWC) reasons.push('working capital negativo legítimo (alta rotación, financiación por proveedores)');
+    if (currentBusinessProfile.hasStrategicDebt) reasons.push('apalancamiento estratégico (cobertura intereses ≥ 8×, FCF sólido)');
+    if (currentBusinessProfile.isUtility) reasons.push('sector utilities (deuda estructural por activos regulados)');
+    if (currentBusinessProfile.isFinancial) reasons.push('entidad financiera (se evalúa por métricas regulatorias, no ratios de balance no financiero)');
+    html += `<div class="info-box" style="margin-bottom:14px;border-left-color:var(--neutral);color:var(--neutral)">
+      <strong>Contexto del perfil:</strong> ${reasons.join('; ')}. Algunos ratios de liquidez/endeudamiento aparecen como <strong>Neutro contextual</strong> en lugar de Alerta. La evaluación bruta sigue accesible en el panel colapsable de ratios financieros.
+    </div>`;
+  }
+
+  html += '<div class="score-row">';
 
   // Piotroski card
   if (piotroski) {
@@ -4533,30 +4711,59 @@ function renderQuality(years) {
 function computeNetDebt(d, userOverride) {
   const k = unitInfo.multiplier;
   const ddf = (d.deudas_fin || 0) * k;
-  const tes = (d.tesoreria || 0) * k;
-  const totLiab = ((d.pnc || 0) + (d.pc || 0)) * k;
-  const acreedores = (d.acreedores_com || 0) * k;
-  const narrowNet = ddf - tes;
-  // "Non-trade liabilities net of cash" — a more honest upper-bound proxy
-  // that excludes acreedores comerciales (suppliers) but includes everything else
-  // (pensions, provisions, leases, etc). Still imperfect but defensible.
-  const nonTradeNet = totLiab - acreedores - tes;
-  // Flag suspicious: DDF less than 10% of total non-trade liabilities
-  // (typical of utilities/telcos with massive lease + pension obligations
-  // not classified as "Deudas financieras" in SABI)
-  const looksSuspicious = ddf < (totLiab - acreedores) * 0.10;
+  const sector = (companyInfo && companyInfo.fmp_sector) || '';
+  // En financieras/REITs, las inversiones a LP son activos operativos del negocio
+  // (cartera de préstamos, propiedades de inversión), no excedente de tesorería.
+  const isFinancialLike = /financial|real estate/i.test(sector);
 
-  // User override takes precedence
+  // ¿Tenemos desglose de tesorería + inversiones de AV / FMP?
+  const cashOnly = (d.cash_only || 0) * k;
+  const shortTermInv = (d.short_term_inv || 0) * k;
+  const longTermInv = (d.long_term_inv || 0) * k;
+  const hasMarketables = (cashOnly + shortTermInv + longTermInv) > 0;
+
+  // User override SIEMPRE prevalece (independiente del método)
   if (userOverride !== null && userOverride !== undefined && !isNaN(userOverride)) {
     return {
       value: userOverride,
       method: 'override',
-      narrowNet, nonTradeNet, totLiab, tes, ddf, acreedores,
+      ddf, cashOnly, shortTermInv, longTermInv, isFinancialLike,
       note: `Valor introducido manualmente por el usuario.`
     };
   }
 
-  // Default: use narrow definition, but warn if it looks too small
+  // === RUTA AV/FMP: deuda menos marketable securities (fix 1.4) ===
+  if (hasMarketables) {
+    const longTermLiquid = isFinancialLike ? 0 : longTermInv;
+    const netDebt = ddf - cashOnly - shortTermInv - longTermLiquid;
+    return {
+      value: netDebt,
+      method: 'expanded',
+      ddf, cashOnly, shortTermInv, longTermInv, longTermLiquid, isFinancialLike,
+      breakdown: [
+        { label: 'Deuda financiera bruta (corto + largo plazo)', value: ddf, op: '' },
+        { label: 'Tesorería + equivalentes',                     value: -cashOnly, op: '−' },
+        { label: 'Inversiones financieras corto plazo',          value: -shortTermInv, op: '−' },
+        ...(isFinancialLike
+          ? [{ label: 'Inversiones largo plazo', value: 0, op: 'omitido (activos operativos del negocio)' }]
+          : [{ label: 'Inversiones largo plazo (marketable securities)', value: -longTermLiquid, op: '−' }]
+        ),
+        { label: 'Deuda neta', value: netDebt, op: '=' }
+      ],
+      note: isFinancialLike
+        ? `Deuda neta ajustada para sector financiero: las inversiones a largo plazo NO se descuentan (son activos del negocio, no excedente).`
+        : `Deuda neta = deuda bruta − tesorería − inversiones financieras (corto y largo plazo). ${netDebt < 0 ? `<strong>Caja neta positiva</strong> (${fmtMilEUR(-netDebt)}): la empresa tiene más liquidez+inversiones que deuda.` : ''}`
+    };
+  }
+
+  // === RUTA SABI (legacy): no hay desglose, usar narrow definition ===
+  const tes = (d.tesoreria || 0) * k;
+  const totLiab = ((d.pnc || 0) + (d.pc || 0)) * k;
+  const acreedores = (d.acreedores_com || 0) * k;
+  const narrowNet = ddf - tes;
+  const nonTradeNet = totLiab - acreedores - tes;
+  const looksSuspicious = ddf < (totLiab - acreedores) * 0.10;
+
   return {
     value: narrowNet,
     method: 'narrow',
@@ -4567,6 +4774,226 @@ function computeNetDebt(d, userOverride) {
       : `Calculada como <strong>Deudas financieras − Tesorería</strong>.`
   };
 }
+// =======================================================
+// FREE CASH FLOW (fix 1.3)
+// Preferimos OCF − CapEx del cashflow statement (real, conserva working capital
+// y inversión en CapEx). Fallback explícito a BN + Amortización cuando el
+// cashflow statement no esté disponible (SABI, FMP free roto, etc.).
+// =======================================================
+function computeFCF(d) {
+  if (d.ocf !== null && d.ocf !== undefined && !isNaN(d.ocf) &&
+      d.capex !== null && d.capex !== undefined && !isNaN(d.capex)) {
+    const fcf = d.ocf - Math.abs(d.capex);
+    return {
+      value: fcf,
+      method: 'real',
+      label: 'FCF = OCF − CapEx (cash flow statement)',
+      ocf: d.ocf,
+      capex: Math.abs(d.capex)
+    };
+  }
+  // Fallback: aproximación BN + Amortización (sobreestima en empresas con CapEx alto)
+  const approx = (d.bn || 0) + (d.amortizaciones || 0);
+  return {
+    value: approx,
+    method: 'approx',
+    label: 'FCF ≈ BN + Amortización (aproximación; cash flow statement no disponible)',
+    ocf: null,
+    capex: null
+  };
+}
+
+// =======================================================
+// BUSINESS PROFILE (fix 1.5)
+// Detecta perfil de empresa con co-confirmación (múltiples señales) antes de
+// degradar alertas de liquidez/endeudamiento. Las alertas brutas siguen
+// calculándose y se muestran en panel colapsable.
+// =======================================================
+function stdDev(arr) {
+  const valid = arr.filter(v => v !== null && v !== undefined && !isNaN(v));
+  if (valid.length < 2) return 0;
+  const mean = valid.reduce((s, v) => s + v, 0) / valid.length;
+  const variance = valid.reduce((s, v) => s + (v - mean) ** 2, 0) / valid.length;
+  return Math.sqrt(variance);
+}
+
+function computeBusinessProfile(years) {
+  // years = array de yearsData ordenado oldest → newest (renderInvestment ya lo hace)
+  const recent = years[years.length - 1];
+  const prev = years.length > 1 ? years[years.length - 2] : null;
+  const d = extractedData[recent.label];
+  const dPrev = prev ? extractedData[prev.label] : null;
+  if (!d) return null;
+
+  // Sector / industry desde companyInfo
+  const sector = (companyInfo && companyInfo.fmp_sector) || '';
+  const industry = (companyInfo && companyInfo.industry) || '';
+  const isFinancial = /financial/i.test(sector);
+  const isREIT = /reit/i.test(industry) || /real estate/i.test(sector);
+  const isUtility = /utilit/i.test(sector);
+
+  // Estado coyuntural
+  const isLossMaking = (d.bn || 0) < 0;
+  const fcfInfo = computeFCF(d);
+  const hasNegativeFCF = fcfInfo.value < 0;
+
+  // Calidad estructural
+  const piotroski = dPrev ? computePiotroski(d, dPrev) : null;
+  const piotroskiScore = piotroski ? piotroski.score : null;
+  const altman = computeAltmanZ(d, null);  // Z' privado siempre, sin marketCap
+  const altmanZ = altman ? altman.z : null;
+  const isInDistress = (piotroskiScore !== null && piotroskiScore <= 3 && altmanZ !== null && altmanZ < 1.8);
+
+  // CAGR ventas 5y
+  const ventasArr = years.map(y => extractedData[y.label].ventas).filter(v => v && v > 0);
+  let cagrVentas5y = null;
+  if (ventasArr.length >= 2) {
+    const yearsSpan = years[years.length - 1].year - years[0].year;
+    if (yearsSpan > 0) cagrVentas5y = Math.pow(ventasArr[ventasArr.length - 1] / ventasArr[0], 1 / yearsSpan) - 1;
+  }
+  const isHyperGrowth = cagrVentas5y !== null && cagrVentas5y > 0.30;
+
+  // FCF margin (último año y mínimo 5y)
+  const ventasNow = d.ventas || 0;
+  const fcfMargin = ventasNow > 0 ? fcfInfo.value / ventasNow : 0;
+  const fcfMargins5y = years.map(y => {
+    const yd = extractedData[y.label];
+    if (!yd || !yd.ventas) return null;
+    const f = computeFCF(yd).value;
+    return f / yd.ventas;
+  }).filter(v => v !== null && !isNaN(v));
+  const fcfMargin5yMin = fcfMargins5y.length > 0 ? Math.min(...fcfMargins5y) : null;
+
+  // Working capital y rotación stocks
+  const fondoManiobra = (d.ac || 0) - (d.pc || 0);
+  // Rotación stocks = consumos / existencias (veces/año). Si > 24, stock < ~15 días.
+  const rotacionStocks = (d.existencias && d.consumo_merc) ? Math.abs(d.consumo_merc) / d.existencias : null;
+
+  // Stddev liquidez (AC/PC) en 5 años
+  const liquidityRatios = years.map(y => {
+    const yd = extractedData[y.label];
+    return (yd && yd.ac && yd.pc) ? yd.ac / yd.pc : null;
+  });
+  const stdDevLiquidityRatio5y = stdDev(liquidityRatios);
+
+  // Cobertura de intereses
+  const interestCoverageRatio = (d.baii && d.gastos_fin && d.gastos_fin > 0) ? d.baii / d.gastos_fin : null;
+
+  // Capacidad devolución préstamos = FCF / Deudas financieras
+  const capacidadDevolucion = (d.deudas_fin && d.deudas_fin > 0) ? fcfInfo.value / d.deudas_fin : null;
+
+  // Rotación de activo
+  const rotacionActivo = (d.ventas && d.activo_total) ? d.ventas / d.activo_total : null;
+  const isCapitalLight = rotacionActivo !== null && rotacionActivo > 1.2 && fcfMargin > 0.10;
+
+  // === CO-CONFIRMACIÓN ===
+  // Legitimate negative WC (Inditex, supermercados): WC<0 + alta rotación stocks +
+  // FCF positivo sostenido 5y + Piotroski sólido + ratio estable (no degradación súbita)
+  const hasLegitimateNegativeWC =
+       fondoManiobra < 0
+    && rotacionStocks !== null && rotacionStocks > 24
+    && fcfMargin5yMin !== null && fcfMargin5yMin > 0.05
+    && piotroskiScore !== null && piotroskiScore >= 6
+    && stdDevLiquidityRatio5y < 0.20;
+
+  // Strategic debt (Apple-style buybacks financiados, tech maduro con caja): cobertura
+  // intereses alta + FCF sólido + capacidad devolución >1 + Piotroski sólido
+  const hasStrategicDebt =
+       interestCoverageRatio !== null && interestCoverageRatio > 8
+    && fcfMargin > 0.10
+    && capacidadDevolucion !== null && capacidadDevolucion > 1
+    && piotroskiScore !== null && piotroskiScore >= 6;
+
+  return {
+    // Sector flags
+    sector, industry, isFinancial, isREIT, isUtility, isCapitalLight,
+    // State flags
+    isLossMaking, hasNegativeFCF, isHyperGrowth, isInDistress,
+    // Quality
+    piotroskiScore, altmanZ,
+    // Co-confirmed business model flags
+    hasLegitimateNegativeWC, hasStrategicDebt,
+    // Raw metrics (útiles para diagnóstico)
+    metrics: {
+      fondoManiobra, rotacionStocks, fcfMargin, fcfMargin5yMin,
+      stdDevLiquidityRatio5y, interestCoverageRatio, capacidadDevolucion,
+      rotacionActivo, cagrVentas5y, fcf: fcfInfo.value, fcfMethod: fcfInfo.method
+    }
+  };
+}
+
+// Estado global del profile actual · seteado por renderInvestment, leído por v_xxx
+// y por los renders. null cuando no hay análisis de inversión activo.
+let currentBusinessProfile = null;
+
+// =======================================================
+// contextualizeVerdict (fix 1.5)
+// Aplica salvaguardas según businessProfile co-confirmado. Devuelve un nuevo verdict
+// (con status='neutral' cuando aplica) o el original. NUNCA suprime en distress.
+// Cada verdict contextualizado conserva el original en .raw para el panel colapsable.
+// =======================================================
+function contextualizeVerdict(raw, kind, profile) {
+  if (!raw || !profile) return raw;
+  if (raw.status === 'good' || raw.status === 'na') return raw;
+  if (profile.isInDistress) return raw; // nunca contextualizar en distress
+
+  // --- Liquidez / acid test / tesorería ---
+  if ((kind === 'liquidez' || kind === 'acid_test' || kind === 'tesoreria') && profile.hasLegitimateNegativeWC) {
+    return {
+      status: 'neutral',
+      kind,
+      text: 'Fondo de maniobra negativo habitual en este modelo (alta rotación de stocks, financiación por proveedores). FCF positivo sostenido y Piotroski sólido confirman que no indica riesgo concursal.',
+      raw
+    };
+  }
+
+  // --- Endeudamiento / apalancamiento ---
+  if (kind === 'endeudamiento' || kind === 'apalancamiento' || kind === 'calidad_deuda' ||
+      kind === 'exigible_patrim' || kind === 'cap_devol_prest' || kind === 'rec_propios_lp') {
+    if (profile.isFinancial) {
+      return {
+        status: 'neutral',
+        kind,
+        text: 'No aplicable a entidades financieras. Se evalúan con métricas regulatorias (CET1, Tier 1, Leverage Ratio).',
+        raw
+      };
+    }
+    if (profile.isUtility) {
+      return {
+        status: 'neutral',
+        kind,
+        text: 'Apalancamiento elevado es estructural en utilities (activos regulados, flujos predecibles). Verificar cobertura de intereses y calendario de vencimientos.',
+        raw
+      };
+    }
+    if (profile.hasStrategicDebt) {
+      return {
+        status: 'neutral',
+        kind,
+        text: 'Apalancamiento elevado con cobertura de intereses ≥ 8× y FCF sólido; uso estratégico de deuda barata, no estrés financiero.',
+        raw
+      };
+    }
+  }
+
+  // --- Solvencia ---
+  if (kind === 'solvencia') {
+    if (profile.isFinancial) {
+      return { status: 'neutral', kind, text: 'No aplicable a entidades financieras.', raw };
+    }
+    if (profile.hasStrategicDebt) {
+      return {
+        status: 'neutral',
+        kind,
+        text: 'Solvencia técnica baja compensada por alta cobertura de intereses y FCF sólido.',
+        raw
+      };
+    }
+  }
+
+  return raw;
+}
+
 function computeSensitivityMatrix(cf0, gFCFRange, waccRange, gTerm, deudaNeta, N) {
   const matrix = [];
   for (const wacc of waccRange) {
@@ -4633,7 +5060,9 @@ function renderRobustness(years, price, shares, wacc, gTerm, gFCF) {
   const recent = years[years.length - 1];
   const d = extractedData[recent.label];
   const k = unitInfo.multiplier;
-  const cf0 = ((d.bn || 0) + (d.amortizaciones || 0)) * k;
+  // FCF real (OCF − CapEx) con fallback a BN + Amortización si no hay cash flow statement
+  const fcfInfo = computeFCF(d);
+  const cf0 = fcfInfo.value * k;
   // Read manual net debt override (in millions EUR as user input)
   const manualNetDebtInput = parseFloat(document.getElementById('inp-net-debt').value);
   const manualNetDebt = isNaN(manualNetDebtInput) ? null : manualNetDebtInput * 1_000_000;
@@ -4645,7 +5074,7 @@ function renderRobustness(years, price, shares, wacc, gTerm, gFCF) {
     document.getElementById('inv-robustness').innerHTML =
       `<div class="info-box" style="border-left-color:var(--bad);color:var(--bad)">
         <strong>⚠ Análisis DCF no aplicable a esta empresa en este ejercicio</strong><br>
-        El cash flow base (BN + Amortizaciones) es ${fmtMilEUR(cf0)} ≤ 0. No se pueden aplicar métodos basados en descuento de flujos cuando la empresa no genera caja operativa positiva. Los modelos DCF, DCF inverso y margen de seguridad asumen generación de caja sostenible.
+        El cash flow base (${fcfInfo.label}) es ${fmtMilEUR(cf0)} ≤ 0. No se pueden aplicar métodos basados en descuento de flujos cuando la empresa no genera caja operativa positiva. Los modelos DCF, DCF inverso y margen de seguridad asumen generación de caja sostenible.
         <br><br>Alternativas para empresas en pérdidas / reestructuración:
         <ul style="margin-top:6px;padding-left:20px">
           <li>Valoración patrimonial (PN/N° acciones)</li>
@@ -4668,7 +5097,31 @@ function renderRobustness(years, price, shares, wacc, gTerm, gFCF) {
   const matrixMin = flatValid.length > 0 ? Math.min(...flatValid) : 0;
   const matrixMax = flatValid.length > 0 ? Math.max(...flatValid) : 1;
 
-  let html = `<div style="font-family:var(--serif);font-size:14px;font-weight:600;text-transform:uppercase;letter-spacing:0.08em;color:var(--accent);margin-bottom:10px;border-left:3px solid var(--accent);padding-left:10px">A · Matriz de sensibilidad WACC × g_FCF</div>`;
+  let html = '';
+
+  // === Desglose de deuda neta (visible solo cuando hay marketable securities, fix 1.4) ===
+  if (netDebtInfo.method === 'expanded' && netDebtInfo.breakdown) {
+    html += `<details class="rob-card" style="margin-bottom:18px;padding:12px 16px;cursor:pointer">
+      <summary style="font-family:var(--sans);font-size:13px;font-weight:600;color:var(--accent);cursor:pointer;list-style:none">
+        Desglose de deuda neta · ${fmtMilEUR(netDebtInfo.value)} ${netDebtInfo.value < 0 ? '<span style="color:var(--positive);font-weight:700">(caja neta)</span>' : ''}
+        <span style="font-weight:400;color:var(--ink-mute);font-size:11px;margin-left:8px">click para abrir</span>
+      </summary>
+      <table style="margin-top:10px;width:100%;font-size:12px;border-collapse:collapse">
+        <tbody>`;
+    for (const row of netDebtInfo.breakdown) {
+      const isFinal = row.op === '=';
+      const isOmitted = typeof row.op === 'string' && row.op.includes('omitido');
+      html += `<tr ${isFinal ? 'style="border-top:1px solid var(--line-strong);font-weight:700"' : ''}>
+        <td style="padding:6px 8px;color:${isOmitted ? 'var(--ink-mute)' : 'var(--ink-soft)'}">${esc(row.label)}</td>
+        <td style="padding:6px 8px;text-align:right;font-variant-numeric:tabular-nums;${isOmitted ? 'color:var(--ink-mute);font-style:italic' : ''}">${isOmitted ? row.op : (row.op + ' ' + fmtMilEUR(row.value))}</td>
+      </tr>`;
+    }
+    html += `</tbody></table>
+      <div style="margin-top:8px;font-size:11px;color:var(--ink-mute);line-height:1.5">${netDebtInfo.note}</div>
+    </details>`;
+  }
+
+  html += `<div style="font-family:var(--sans);font-size:14px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:var(--accent);margin-bottom:10px;border-left:3px solid var(--accent);padding-left:10px">A · Matriz de sensibilidad WACC × g_FCF</div>`;
   html += `<div style="font-size:12px;color:var(--ink-soft);margin-bottom:14px;line-height:1.5">Valor por acción estimado para combinaciones de tasa de descuento y crecimiento esperado. La celda destacada es tu configuración actual. ${price ? 'Colores comparan con el precio actual: verde = infravalorado, rojo = sobrevalorado.' : 'Introduce el precio para ver desviación vs mercado.'}</div>`;
 
   html += `<div style="overflow-x:auto"><table class="sens-matrix">
@@ -4953,6 +5406,7 @@ function loadAnalysisFromKey(key) {
     currentBlockIdx = 0;
     blockLabelIndex = [];
     ratiosCache = null;
+    currentBusinessProfile = null;
 
     // Restore inputs
     setInputs(a.inputs);
@@ -4998,7 +5452,7 @@ function refreshWatchlist() {
     return `<div class="watchlist-item">
       <div style="flex:1;min-width:0">
         <div class="wl-name">${item.company}</div>
-        <div class="wl-date">${date} · ejercicio ${item.latest_year}${item.inputs && item.inputs.price ? ' · precio ' + item.inputs.price + '€' : ''}</div>
+        <div class="wl-date">${date} · ejercicio ${item.latest_year}${item.inputs && item.inputs.price ? ' · precio ' + item.inputs.price + ' ' + ((item.unitInfo && ({ EUR: '€', USD: '$', GBP: '£', CHF: 'CHF', JPY: '¥' })[item.unitInfo.currency]) || (item.unitInfo && item.unitInfo.currency) || '€') : ''}</div>
       </div>
       <div class="wl-actions">
         <button onclick="loadAnalysisFromKey('${item.key}')">Cargar</button>
@@ -5401,11 +5855,11 @@ function renderPeers() {
 
   // Section: Size
   html += `<tr class="metric-row"><td colspan="${peerMetrics.length + 2}">Tamaño y resultados</td></tr>`;
-  html += metricRow('Ventas (M €)', m => m.ventas, v => (v / 1e6).toLocaleString('es-ES', { maximumFractionDigits: 0 }), 'higher', null);
-  html += metricRow('Beneficio neto (M €)', m => m.bn, v => (v / 1e6).toLocaleString('es-ES', { maximumFractionDigits: 0 }), 'higher', null);
-  html += metricRow('EBITDA (M €)', m => m.ebitda, v => (v / 1e6).toLocaleString('es-ES', { maximumFractionDigits: 0 }), 'higher', null);
-  html += metricRow('Activo total (M €)', m => m.activo, v => (v / 1e6).toLocaleString('es-ES', { maximumFractionDigits: 0 }), 'higher', null);
-  html += metricRow('Patrimonio neto (M €)', m => m.pn, v => (v / 1e6).toLocaleString('es-ES', { maximumFractionDigits: 0 }), 'higher', null);
+  html += metricRow('Ventas (M, moneda nativa)', m => m.ventas, v => (v / 1e6).toLocaleString('es-ES', { maximumFractionDigits: 0 }), 'higher', null);
+  html += metricRow('Beneficio neto (M, moneda nativa)', m => m.bn, v => (v / 1e6).toLocaleString('es-ES', { maximumFractionDigits: 0 }), 'higher', null);
+  html += metricRow('EBITDA (M, moneda nativa)', m => m.ebitda, v => (v / 1e6).toLocaleString('es-ES', { maximumFractionDigits: 0 }), 'higher', null);
+  html += metricRow('Activo total (M, moneda nativa)', m => m.activo, v => (v / 1e6).toLocaleString('es-ES', { maximumFractionDigits: 0 }), 'higher', null);
+  html += metricRow('Patrimonio neto (M, moneda nativa)', m => m.pn, v => (v / 1e6).toLocaleString('es-ES', { maximumFractionDigits: 0 }), 'higher', null);
 
   // Section: Profitability
   html += `<tr class="metric-row"><td colspan="${peerMetrics.length + 2}">Rentabilidad</td></tr>`;
@@ -5421,10 +5875,10 @@ function renderPeers() {
 
   // Section: Valuation
   html += `<tr class="metric-row"><td colspan="${peerMetrics.length + 2}">Valoración de mercado</td></tr>`;
-  html += metricRow('Capitalización (M €)', m => m.cap, v => (v / 1e6).toLocaleString('es-ES', { maximumFractionDigits: 0 }), 'higher', null);
+  html += metricRow('Capitalización (M, moneda nativa)', m => m.cap, v => (v / 1e6).toLocaleString('es-ES', { maximumFractionDigits: 0 }), 'higher', null);
   html += metricRow('PER', m => m.per, v => v.toFixed(1) + '×', 'lower', sectorBM.per);
   html += metricRow('EV / EBITDA', m => m.ev_ebitda, v => v.toFixed(1) + '×', 'lower', sectorBM.ev_ebitda);
-  html += metricRow('Precio (€)', m => m.price, v => v.toFixed(2) + ' €', 'higher', null);
+  html += metricRow('Precio (moneda nativa)', m => m.price, v => v.toFixed(2), 'higher', null);
 
   html += `</tbody></table></div>`;
 
@@ -5656,6 +6110,7 @@ function buildDatasetFromFMP(profile, balance, income, cashFlow) {
   currentBlockIdx = 0;
   blockLabelIndex = [];
   ratiosCache = null;
+  currentBusinessProfile = null;
   // Map currency to unit info — FMP returns values in absolute units (USD, EUR, etc.)
   // We treat them as "absolute" with multiplier 1
   const currency = profile.currency || 'USD';
@@ -5723,6 +6178,11 @@ function buildDatasetFromFMP(profile, balance, income, cashFlow) {
       gastos_fin:      Math.abs(inc.interestExpense || 0),
       amortizaciones:  inc.depreciationAndAmortization || (cf ? Math.abs(cf.depreciationAndAmortization || 0) : 0),
       consumo_merc:    inc.costOfRevenue || 0,
+      // Cash flow statement (fix 1.3)
+      ocf:             cf ? (cf.operatingCashFlow || cf.netCashProvidedByOperatingActivities || null) : null,
+      capex:           cf ? Math.abs(cf.capitalExpenditure || 0) : null,
+      dividendsPaid:   cf ? Math.abs(cf.dividendsPaid || 0) : null,
+      buybacks:        cf ? Math.abs(cf.commonStockRepurchased || 0) : null,
       // Balance sheet
       activo_total:    bal.totalAssets || 0,
       pn:              bal.totalStockholdersEquity || 0,
@@ -5732,6 +6192,10 @@ function buildDatasetFromFMP(profile, balance, income, cashFlow) {
       ac:              bal.totalCurrentAssets || 0,
       existencias:     bal.inventory || 0,
       tesoreria:       (bal.cashAndCashEquivalents || 0) + (bal.shortTermInvestments || 0),
+      // Marketable securities desglosado (fix 1.4)
+      cash_only:       bal.cashAndCashEquivalents || 0,
+      short_term_inv:  bal.shortTermInvestments || 0,
+      long_term_inv:   bal.longTermInvestments || 0,
       deudores:        bal.netReceivables || 0,
       acreedores_com:  bal.accountPayables || 0,
       deudas_fin:      (bal.shortTermDebt || 0) + (bal.longTermDebt || 0)
@@ -5748,6 +6212,8 @@ function buildDatasetFromFMP(profile, balance, income, cashFlow) {
     const sharesEstimate = Math.round(profile.mktCap / profile.price);
     document.getElementById('inp-shares').value = sharesEstimate;
   }
+  // Auto-fill múltiplos sectoriales (fix 1.1)
+  applySectorAutoFill();
   renderInvestment();
 }
 
@@ -5762,6 +6228,17 @@ function buildDatasetFromFMP(profile, balance, income, cashFlow) {
 async function avFetch(fn, ticker) {
   const apiKey = localStorage.getItem('av_api_key');
   if (!apiKey) throw new Error('NO_AV_KEY');
+  // Caché en sessionStorage: clave = av:<FN>:<TICKER>:<KEYHASH>. TTL = duración de la sesión.
+  // Reduce el coste a 0 reqs cuando el usuario reanaliza un ticker que ya cargó. Crítico
+  // durante validación (matriz multi-ticker no agota el cupo de 25 req/día).
+  const cacheKey = `av:${fn}:${ticker}:${apiKey.slice(0,4)}`;
+  try {
+    const cached = sessionStorage.getItem(cacheKey);
+    if (cached) {
+      console.info(`AV cache hit · ${fn}/${ticker}`);
+      return JSON.parse(cached);
+    }
+  } catch (_) { /* sessionStorage puede no estar disponible */ }
   const url = new URL('https://www.alphavantage.co/query');
   url.searchParams.set('function', fn);
   url.searchParams.set('symbol', ticker);
@@ -5797,12 +6274,21 @@ async function avFetch(fn, ticker) {
     throw new Error('AV_INFO:' + info.slice(0, 140));
   }
   if (data['Error Message']) throw new Error('TICKER_NOT_FOUND');
+  // Solo cachear respuestas válidas (no errores ni rate-limits)
+  try { sessionStorage.setItem(cacheKey, JSON.stringify(data)); } catch (_) { /* cuota llena */ }
   return data;
 }
 
 // Pequeña pausa entre llamadas AV consecutivas para respetar el burst limit
-// de 1 request/segundo del plan free.
+// de 1 request/segundo del plan free. Se omite si la siguiente llamada va a cache.
 function avSleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+function avHasCache(fn, ticker) {
+  try {
+    const k = localStorage.getItem('av_api_key');
+    if (!k) return false;
+    return !!sessionStorage.getItem(`av:${fn}:${ticker}:${k.slice(0,4)}`);
+  } catch (_) { return false; }
+}
 
 // Alpha Vantage devuelve todos los números como STRINGS ("391035000000") o "None".
 // Helper que parsea a número o devuelve 0.
@@ -5827,19 +6313,19 @@ async function loadFromAV() {
   if (loadingDiv) loadingDiv.style.display = 'block';
   if (loadingMsg) loadingMsg.textContent = `Descargando ${ticker} (4 endpoints)...`;
   try {
-    // 4 endpoints en serie con pausa 1.2 s entre llamadas para respetar
-    // el burst limit de Alpha Vantage (1 request/segundo en plan free).
-    // Tiempo total ~5 s con red OK, lo que es aceptable.
+    // 4 endpoints en serie. Pausa 1.2 s entre llamadas para respetar el burst
+    // limit de Alpha Vantage (1 req/s en plan free). Si la siguiente está en
+    // caché de sesión, se omite la pausa (no se consume API).
     if (loadingMsg) loadingMsg.textContent = `${ticker} · perfil (1/4)...`;
     const overview = await avFetch('OVERVIEW', ticker);
     if (!overview.Symbol) throw new Error('TICKER_NOT_FOUND');
-    await avSleep(1200);
+    if (!avHasCache('BALANCE_SHEET', ticker)) await avSleep(1200);
     if (loadingMsg) loadingMsg.textContent = `${ticker} · balance (2/4)...`;
     const balance = await avFetch('BALANCE_SHEET', ticker);
-    await avSleep(1200);
+    if (!avHasCache('INCOME_STATEMENT', ticker)) await avSleep(1200);
     if (loadingMsg) loadingMsg.textContent = `${ticker} · resultados (3/4)...`;
     const income = await avFetch('INCOME_STATEMENT', ticker);
-    await avSleep(1200);
+    if (!avHasCache('CASH_FLOW', ticker)) await avSleep(1200);
     if (loadingMsg) loadingMsg.textContent = `${ticker} · cash flow (4/4)...`;
     const cashflow = await avFetch('CASH_FLOW', ticker);
 
@@ -5898,6 +6384,7 @@ function buildDatasetFromAV(overview, balance, income, cashflow, ticker) {
   currentBlockIdx = 0;
   blockLabelIndex = [];
   ratiosCache = null;
+  currentBusinessProfile = null;
 
   // Alpha Vantage expresa todo en moneda nativa, absoluto (1 = 1 unidad)
   const currency = overview.Currency || 'USD';
@@ -5968,11 +6455,22 @@ function buildDatasetFromAV(overview, balance, income, cashflow, ticker) {
     const totalNonCurrentLiab = avNum(bs.totalNonCurrentLiabilities);
     const totalNonCurrentAssets = avNum(bs.totalNonCurrentAssets) || (totalAssets - totalCurrentAssets);
     const inventory = avNum(bs.inventory);
-    const cash = avNum(bs.cashAndCashEquivalentsAtCarryingValue) + avNum(bs.shortTermInvestments);
+    const cashOnly = avNum(bs.cashAndCashEquivalentsAtCarryingValue);
+    const shortTermInv = avNum(bs.shortTermInvestments);
+    const longTermInv = avNum(bs.longTermInvestments);
+    const cash = cashOnly + shortTermInv;  // tesorería operativa
     const receivables = avNum(bs.currentNetReceivables);
     const accountsPayable = avNum(bs.currentAccountsPayable);
     const shortTermDebt = avNum(bs.shortTermDebt);
     const longTermDebt = avNum(bs.longTermDebt);
+
+    // Cash flow statement · campos de Alpha Vantage CASH_FLOW (anuales)
+    // operatingCashflow puede venir como "operatingCashflow" en algunos endpoints.
+    // capitalExpenditures viene firmado positivo en AV (a diferencia de FMP).
+    const operatingCashflow = avNum(cf.operatingCashflow) || avNum(cf.operatingCashFlow);
+    const capitalExpenditures = avNum(cf.capitalExpenditures);
+    const dividendsPaid = avNum(cf.dividendPayout) || avNum(cf.dividendsPaid);
+    const buybacks = avNum(cf.paymentsForRepurchaseOfCommonStock);
 
     extractedData[label] = {
       _year: year, _label: label,
@@ -5983,6 +6481,15 @@ function buildDatasetFromAV(overview, balance, income, cashflow, ticker) {
       ebitda: ebitda,
       rdo_bruto: grossProfit,
       gastos_fin: interestExpense,
+      // Cash flow real
+      ocf: operatingCashflow || null,            // Operating cash flow del cashflow statement
+      capex: capitalExpenditures || null,        // CapEx (siempre positivo en AV)
+      dividendsPaid: dividendsPaid || null,
+      buybacks: buybacks || null,
+      // Marketable securities (para fix 1.4 deuda neta)
+      cash_only: cashOnly,
+      short_term_inv: shortTermInv,
+      long_term_inv: longTermInv,
       amortizaciones: depreciation,
       consumo_merc: costOfRevenue,
       activo_total: totalAssets,
@@ -6007,6 +6514,9 @@ function buildDatasetFromAV(overview, balance, income, cashflow, ticker) {
   if (sharesOut) document.getElementById('inp-shares').value = Math.round(sharesOut);
   // OVERVIEW no incluye precio actual; lo pedimos aparte (1 request extra opcional)
   // Por defensa: si el usuario quiere precio en vivo usa el botón ↻
+
+  // Auto-fill múltiplos sectoriales (fix 1.1)
+  applySectorAutoFill();
 
   renderInvestment();
 }
@@ -6348,7 +6858,7 @@ function renderCrecimiento(years) {
   for (const it of items) {
     const values = years.map(yr => {
       const d = extractedData[yr.label];
-      if (it.key === 'cash_flow') return (d.bn || 0) + (d.amortizaciones || 0);
+      if (it.key === 'cash_flow') return computeFCF(d).value;
       return d[it.key];
     });
     const xLabels = years.map(yr => yr.label.split('/')[2].slice(-2));
@@ -6393,7 +6903,7 @@ function renderCapital(years) {
     fmValues.push((d.ac !== null && d.pc !== null) ? d.ac - d.pc : null);
     nofValues.push((d.existencias !== null && d.deudores !== null && d.acreedores_com !== null)
                    ? (d.existencias || 0) + (d.deudores || 0) - (d.acreedores_com || 0) : null);
-    cfValues.push((d.bn !== null && d.amortizaciones !== null) ? (d.bn || 0) + (d.amortizaciones || 0) : null);
+    cfValues.push(computeFCF(d).value);
   }
   const recent = years[years.length - 1];
   const dR = extractedData[recent.label];
@@ -6490,7 +7000,9 @@ function renderValuation(years, price, shares, wacc, gTerm, gFCF, perObj, evEbit
   const valor_ev_ebitda = (ev_objetivo - deuda_fin_neta) / N;
 
   // ====== D. DCF (cálculo aquí mismo, render por separado abajo) ======
-  const cf0_eur = ((d.bn || 0) + (d.amortizaciones || 0)) * k;
+  // FCF base · OCF − CapEx cuando disponible, fallback BN+Amort
+  const fcfInfo = computeFCF(d);
+  const cf0_eur = fcfInfo.value * k;
   const projections = [];
   let cf_proj = cf0_eur;
   for (let yr = 1; yr <= 4; yr++) {
@@ -6542,8 +7054,16 @@ function renderValuation(years, price, shares, wacc, gTerm, gFCF, perObj, evEbit
   </div>`;
 
   // PER (only meaningful if BN > 0)
+  const inpPerEl = document.getElementById('inp-per');
+  const perSource = inpPerEl ? (inpPerEl.dataset.source || 'default') : 'default';
+  const perSectorLabel = inpPerEl ? (inpPerEl.dataset.sectorLabel || '') : '';
+  const perSourceBadge = perSource === 'auto'
+    ? `<span style="display:inline-block;padding:2px 8px;background:var(--positive-bg);color:var(--positive);font-size:10px;text-transform:uppercase;letter-spacing:0.10em;font-weight:700;border-radius:var(--r);margin-left:8px">Auto · ${esc(perSectorLabel)}</span>`
+    : perSource === 'manual'
+      ? `<span style="display:inline-block;padding:2px 8px;background:var(--warn-bg);color:var(--warn);font-size:10px;text-transform:uppercase;letter-spacing:0.10em;font-weight:700;border-radius:var(--r);margin-left:8px">Override manual</span>`
+      : '';
   html += `<div class="valuation-card" ${hasNegativeBN ? 'style="opacity:0.5"' : ''}>
-    <div class="valuation-card-title">Método de múltiplos · PER ${hasNegativeBN ? '<span style="color:var(--bad);font-size:11px;font-weight:600;margin-left:6px;text-transform:uppercase;letter-spacing:0.08em">No aplicable</span>' : ''}</div>
+    <div class="valuation-card-title">Método de múltiplos · PER ${perSourceBadge}${hasNegativeBN ? '<span style="color:var(--bad);font-size:11px;font-weight:600;margin-left:6px;text-transform:uppercase;letter-spacing:0.08em">No aplicable</span>' : ''}</div>
     <div class="valuation-card-sub">Valoración por múltiplo precio-beneficio. PER objetivo del sector × BPA = valor objetivo.${hasNegativeBN ? ' No se aplica con beneficio neto negativo (PER no tiene sentido económico).' : ''}</div>
     <div class="valuation-calc">
       <div class="calc-row"><span>Beneficio neto (${recent.year})</span><span>${fmtMilEUR(bn_eur)}</span></div>
@@ -6560,8 +7080,18 @@ function renderValuation(years, price, shares, wacc, gTerm, gFCF, perObj, evEbit
   </div>`;
 
   // EV/EBITDA (only meaningful if EBITDA > 0)
+  const inpEvEl = document.getElementById('inp-ev-ebitda');
+  const evSource = inpEvEl ? (inpEvEl.dataset.source || 'default') : 'default';
+  const evSectorLabel = inpEvEl ? (inpEvEl.dataset.sectorLabel || '') : '';
+  const evSourceBadge = evSource === 'auto'
+    ? `<span style="display:inline-block;padding:2px 8px;background:var(--positive-bg);color:var(--positive);font-size:10px;text-transform:uppercase;letter-spacing:0.10em;font-weight:700;border-radius:var(--r);margin-left:8px">Auto · ${esc(evSectorLabel)}</span>`
+    : evSource === 'manual'
+      ? `<span style="display:inline-block;padding:2px 8px;background:var(--warn-bg);color:var(--warn);font-size:10px;text-transform:uppercase;letter-spacing:0.10em;font-weight:700;border-radius:var(--r);margin-left:8px">Override manual</span>`
+      : evSource === 'omitted'
+        ? `<span style="display:inline-block;padding:2px 8px;background:var(--surface);color:var(--ink-mute);font-size:10px;text-transform:uppercase;letter-spacing:0.10em;font-weight:700;border-radius:var(--r);margin-left:8px">No aplicable · ${esc(evSectorLabel)}</span>`
+        : '';
   html += `<div class="valuation-card" ${hasNegativeEBITDA ? 'style="opacity:0.5"' : ''}>
-    <div class="valuation-card-title">Método de múltiplos · EV/EBITDA ${hasNegativeEBITDA ? '<span style="color:var(--bad);font-size:11px;font-weight:600;margin-left:6px;text-transform:uppercase;letter-spacing:0.08em">No aplicable</span>' : ''}</div>
+    <div class="valuation-card-title">Método de múltiplos · EV/EBITDA ${evSourceBadge}${hasNegativeEBITDA ? '<span style="color:var(--bad);font-size:11px;font-weight:600;margin-left:6px;text-transform:uppercase;letter-spacing:0.08em">No aplicable</span>' : ''}</div>
     <div class="valuation-card-sub">Múltiplo independiente de la estructura de capital. Menos manipulable que el PER (Pablo Fernández).${hasNegativeEBITDA ? ' No se aplica con EBITDA negativo.' : ''}</div>
     <div class="valuation-calc">
       <div class="calc-row"><span>EBITDA (${recent.year})</span><span>${fmtMilEUR(ebitda_eur)}</span></div>
@@ -6590,15 +7120,19 @@ function renderValuation(years, price, shares, wacc, gTerm, gFCF, perObj, evEbit
   if (cf0_eur <= 0) {
     dcfHtml = `<div class="info-box" style="border-left-color:var(--bad);color:var(--bad)">
       <strong>⚠ DCF no aplicable este ejercicio</strong><br>
-      El cash flow base (BN + Amortizaciones = ${fmtMilEUR(cf0_eur)}) es ≤ 0. El descuento de flujos solo tiene sentido cuando la empresa genera caja operativa positiva. Considera valoración patrimonial o múltiplos sobre ventas.
+      El cash flow base (${fcfInfo.label} = ${fmtMilEUR(cf0_eur)}) es ≤ 0. El descuento de flujos solo tiene sentido cuando la empresa genera caja operativa positiva. Considera valoración patrimonial o múltiplos sobre ventas.
     </div>`;
   } else if (valor_dcf !== null) {
     // Detect potential NIIF 16 / leasing inflation: amortizaciones >> BN (more than 2x in absolute terms)
+    // Solo relevante con FCF aproximado; con FCF real ya está internalizado el CapEx
     const amortRel = (d.amortizaciones && Math.abs(d.bn) > 0) ? d.amortizaciones / Math.abs(d.bn) : 0;
-    const fcfWarning = amortRel > 2 || netDebtInfo.method === 'broad';
+    const fcfWarning = (fcfInfo.method === 'approx' && amortRel > 2) || netDebtInfo.method === 'broad';
+    const fcfMethodBadge = fcfInfo.method === 'real'
+      ? `<span style="display:inline-block;padding:2px 8px;background:var(--positive-bg);color:var(--positive);font-size:10px;text-transform:uppercase;letter-spacing:0.10em;font-weight:700;border-radius:var(--r);margin-left:8px">FCF real</span>`
+      : `<span style="display:inline-block;padding:2px 8px;background:var(--warn-bg);color:var(--warn);font-size:10px;text-transform:uppercase;letter-spacing:0.10em;font-weight:700;border-radius:var(--r);margin-left:8px">FCF aprox.</span>`;
     dcfHtml = `<div class="valuation-card">
-      <div class="valuation-card-title">Descuento de flujos de caja libre · DCF</div>
-      <div class="valuation-card-sub">Proyección a 4 años + valor terminal (perpetuidad de Gordon). El FCF se aproxima como BN + Amortizaciones; tasa de descuento WACC = ${(wacc*100).toFixed(1)}%; crecimiento esperado g = ${(gFCF*100).toFixed(1)}%; crecimiento perpetuo g∞ = ${(gTerm*100).toFixed(1)}%.</div>
+      <div class="valuation-card-title">Descuento de flujos de caja libre · DCF ${fcfMethodBadge}</div>
+      <div class="valuation-card-sub">Proyección a 4 años + valor terminal (perpetuidad de Gordon). <strong>${fcfInfo.label}</strong>. Tasa de descuento WACC = ${(wacc*100).toFixed(1)}%; crecimiento esperado g = ${(gFCF*100).toFixed(1)}%; crecimiento perpetuo g∞ = ${(gTerm*100).toFixed(1)}%.</div>
       <table class="dcf-table">
         <thead><tr>
           <th>Año</th><th>FCF proyectado</th><th>Factor descuento</th><th>Valor presente</th>
@@ -6619,8 +7153,8 @@ function renderValuation(years, price, shares, wacc, gTerm, gFCF, perObj, evEbit
       <tr><td colspan="3" style="text-align:right">÷ ${N.toLocaleString('es-ES')} acciones</td><td></td></tr>
       <tr class="highlight" style="font-size:14px"><td colspan="3" style="text-align:right">VALOR INTRÍNSECO POR ACCIÓN</td><td>${fmtEUR(valor_dcf)}</td></tr>
         </tbody></table>
-      ${fcfWarning ? `<div style="margin-top:14px;padding:12px 14px;background:var(--warn-bg);border-left:3px solid var(--warn);font-size:12px;color:var(--ink-soft);line-height:1.55">
-        <strong style="color:var(--warn)">⚠ Aviso sobre la aproximación del FCF:</strong> el FCF "libre" real es <em>BN + Amortizaciones − CAPEX − ΔWorking Capital</em>. Aquí usamos solo BN + Amortizaciones, que ${amortRel > 2 ? `infla el resultado en esta empresa (amortizaciones = ${amortRel.toFixed(1)}× |BN|, posiblemente por arrendamientos NIIF 16 contabilizados como amortización pero que requieren caja real para repagarse). ` : ''}${netDebtInfo.method === 'broad' ? 'Además, la deuda neta podría estar subestimada por la clasificación de pasivos en SABI. ' : ''}El DCF resultante es <strong>optimista</strong> respecto al FCF realmente disponible para accionistas. Considera ajustar manualmente el crecimiento esperado a la baja para compensar.
+      ${fcfWarning && fcfInfo.method === 'approx' ? `<div style="margin-top:14px;padding:12px 14px;background:var(--warn-bg);border-left:3px solid var(--warn);font-size:12px;color:var(--ink-soft);line-height:1.55">
+        <strong style="color:var(--warn)">⚠ Aviso sobre la aproximación del FCF:</strong> el FCF "libre" real es <em>OCF − CapEx</em>. Aquí usamos la aproximación <em>BN + Amortizaciones</em> porque el cash flow statement no está disponible, lo que ${amortRel > 2 ? `infla el resultado en esta empresa (amortizaciones = ${amortRel.toFixed(1)}× |BN|, posiblemente por arrendamientos NIIF 16 contabilizados como amortización pero que requieren caja real para repagarse). ` : ''}${netDebtInfo.method === 'broad' ? 'Además, la deuda neta podría estar subestimada por la clasificación de pasivos en SABI. ' : ''}El DCF resultante es <strong>optimista</strong> respecto al FCF realmente disponible para accionistas. Considera ajustar manualmente el crecimiento esperado a la baja para compensar.
       </div>` : ''}
     </div>`;
   } else {
@@ -6701,18 +7235,34 @@ function renderValuation(years, price, shares, wacc, gTerm, gFCF, perObj, evEbit
   document.getElementById('inv-verdict').innerHTML = html2;
 }
 
-// EUR formatters for investment analysis
+// Formatters de moneda, antes hardcoded a €. Ahora usan unitInfo.currency
+// (poblada por buildDatasetFromAV / buildDatasetFromFMP / parseUnits SABI).
+// Nombres legacy (fmtEUR / fmtMilEUR) preservados para no romper ~60 callsites.
+function currencySymbol() {
+  const c = (unitInfo && unitInfo.currency) || 'EUR';
+  switch (c) {
+    case 'EUR': return '€';
+    case 'USD': return '$';
+    case 'GBP': return '£';
+    case 'JPY': return '¥';
+    case 'CHF': return 'CHF';
+    case 'CAD': return 'C$';
+    case 'AUD': return 'A$';
+    default:    return c;
+  }
+}
 function fmtEUR(v) {
-  if (v === null || isNaN(v)) return 'n.d.';
-  return v.toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' €';
+  if (v === null || v === undefined || isNaN(v)) return 'n.d.';
+  return v.toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' ' + currencySymbol();
 }
 function fmtMilEUR(v) {
-  if (v === null || isNaN(v)) return 'n.d.';
+  if (v === null || v === undefined || isNaN(v)) return 'n.d.';
+  const sym = currencySymbol();
   const abs = Math.abs(v);
-  if (abs >= 1e9) return (v/1e9).toFixed(2) + ' B €';
-  if (abs >= 1e6) return (v/1e6).toFixed(2) + ' M €';
-  if (abs >= 1e3) return (v/1e3).toFixed(0) + ' k €';
-  return v.toFixed(0) + ' €';
+  if (abs >= 1e9) return (v/1e9).toFixed(2) + ' B ' + sym;
+  if (abs >= 1e6) return (v/1e6).toFixed(2) + ' M ' + sym;
+  if (abs >= 1e3) return (v/1e3).toFixed(0) + ' k ' + sym;
+  return v.toFixed(0) + ' ' + sym;
 }
 
 </script>
